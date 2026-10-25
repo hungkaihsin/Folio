@@ -1,0 +1,78 @@
+{
+  "name": "folio-pdf-editor",
+  "version": "0.1.0",
+  "description": "A local PDF workspace for reading, editing and organizing documents",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "npm run build && electron .",
+    "test": "tsx --test tests/engine.test.ts",
+    "test:ui": "npm run build && playwright test",
+    "package:mac": "npm run build && electron-builder --mac dir --arm64",
+    "package:win": "npm run build && electron-builder --win nsis --x64",
+    "package:win:portable": "npm run build && electron-builder --win portable --x64",
+    "test:desktop": "node tests/desktop.mjs",
+    "test:package": "node tests/desktop.mjs release/mac-arm64/Folio.app/Contents/MacOS/Folio",
+    "package:win:zip": "npm run build && electron-builder --win dir --x64",
+    "format": "prettier --write src electron tests *.ts *.json index.html"
+  },
+  "keywords": [],
+  "author": "Daniel Hung",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "mupdf": "^1.28.1",
+    "prettier": "^3.9.10",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "productName": "Folio",
+  "build": {
+    "appId": "com.danielhung.folio",
+    "productName": "Folio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "LICENSE*",
+      "THIRD_PARTY_NOTICES.md",
+      "src/assets/OFL.txt",
+      "README.md"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "identity": null,
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
