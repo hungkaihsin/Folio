@@ -1,21 +1,26 @@
 {
   "name": "folio-pdf-editor",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "description": "A local PDF workspace for reading, editing and organizing documents",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "start": "npm run build && electron .",
-    "test": "tsx --test tests/engine.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "test:ui": "npm run build && playwright test",
-    "package:mac": "npm run build && electron-builder --mac dir --arm64",
+    "package:mac": "npm run build && electron-builder --mac dmg --universal",
     "package:win": "npm run build && electron-builder --win nsis --x64",
     "package:win:portable": "npm run build && electron-builder --win portable --x64",
     "test:desktop": "node tests/desktop.mjs",
-    "test:package": "node tests/desktop.mjs release/mac-arm64/Folio.app/Contents/MacOS/Folio",
+    "test:package": "node tests/desktop.mjs release/v0.7.0/mac-universal/Folio.app/Contents/MacOS/Folio && node tests/clipboard-desktop.mjs release/v0.7.0/mac-universal/Folio.app/Contents/MacOS/Folio",
     "package:win:zip": "npm run build && electron-builder --win dir --x64",
-    "format": "prettier --write src electron tests *.ts *.json index.html"
+    "format": "prettier --write src electron tests *.ts *.json index.html",
+    "package:mac:app": "npm run build && electron-builder --mac dir --arm64",
+    "test:clipboard": "node tests/clipboard-desktop.mjs",
+    "test:installer:win": "node tests/windows-installer.mjs",
+    "test:installer:mac": "node tests/mac-installer.mjs",
+    "postinstall": "install-electron"
   },
   "keywords": [],
   "author": "Daniel Hung",
@@ -43,7 +48,7 @@
     "appId": "com.danielhung.folio",
     "productName": "Folio",
     "directories": {
-      "output": "release"
+      "output": "release/v0.7.0"
     },
     "files": [
       "dist/**/*",
@@ -51,8 +56,8 @@
       "package.json",
       "LICENSE*",
       "THIRD_PARTY_NOTICES.md",
-      "src/assets/OFL.txt",
-      "README.md"
+      "README.md",
+      "src/assets/*OFL.txt"
     ],
     "asar": true,
     "mac": {
@@ -61,18 +66,40 @@
         "dmg"
       ],
       "identity": null,
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "minimumSystemVersion": "13.0"
     },
     "win": {
       "target": [
         "nsis"
       ],
-      "signAndEditExecutable": false,
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Folio-${version}-Windows-${arch}-Setup.${ext}",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Folio",
+      "uninstallDisplayName": "Folio",
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "en_US",
+        "zh_TW"
+      ]
+    },
+    "dmg": {
+      "artifactName": "Folio-${version}-macOS-Universal.${ext}",
+      "title": "Folio ${version}",
+      "iconSize": 96
+    },
+    "toolsets": {
+      "nsis": "1.2.1"
     }
   }
 }

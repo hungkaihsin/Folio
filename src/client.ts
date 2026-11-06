@@ -1,4 +1,15 @@
-import type { DocumentInfo, Edit, RenderedPage } from "./types";
+import type {
+  DocumentInfo,
+  Edit,
+  RenderedPage,
+  ExportOptions,
+  ExportedFile,
+  FontQuery,
+  FontReport,
+  Point,
+  TextSelection,
+  ClipboardContent,
+} from "./types";
 const worker = new Worker(new URL("./engine.worker.ts", import.meta.url), {
   type: "module",
 });
@@ -50,12 +61,23 @@ const call = async <T>(method: string, ...args: unknown[]): Promise<T> => {
   });
 };
 export const engine = {
+  copyObject: (page: number, id: string) =>
+    call<ClipboardContent>("copyObject", page, id),
+  selectText: (page: number, start: Point, end: Point) =>
+    call<TextSelection>("selectText", page, start, end),
+  textBackdrop: (query: FontQuery, scale: number) =>
+    call<Uint8Array>("textBackdrop", query, scale),
+  inspectFont: (query: FontQuery) => call<FontReport>("inspectFont", query),
+  loadFont: (bytes: Uint8Array, name: string) =>
+    call<{ key: string; name: string }[]>("loadFont", bytes, name),
   open: (b: Uint8Array, p?: string) => call<DocumentInfo>("open", b, p),
   create: () => call<DocumentInfo>("create"),
   render: (p: number, s: number, extras = true) =>
     call<RenderedPage>("render", p, s, extras),
   edit: (e: Edit) => call<DocumentInfo>("edit", e),
   export: () => call<Uint8Array>("export"),
+  exportFile: (options: ExportOptions, name: string) =>
+    call<ExportedFile>("exportFile", options, name),
   undo: () => call<DocumentInfo>("undo"),
   redo: () => call<DocumentInfo>("redo"),
   search: (s: string) =>
@@ -67,10 +89,18 @@ export const engine = {
 declare global {
   interface Window {
     desktop?: {
+      readClipboard: () => Promise<ClipboardContent | null>;
+      nativeClipboard: (action: "copy" | "paste") => Promise<void>;
+      writeClipboard: (content: ClipboardContent) => Promise<void>;
+      findFont: (
+        name: string,
+      ) => Promise<{ name: string; face: number; bytes: Uint8Array } | null>;
       open: (
-        kind?: "pdf" | "image",
+        kind?: "pdf" | "image" | "font",
       ) => Promise<{ bytes: Uint8Array; name: string } | null>;
       save: (bytes: Uint8Array, name: string) => Promise<string | null>;
+      exportFile: (file: ExportedFile) => Promise<string | null>;
+      language: (locale: "en" | "zh-TW") => void;
       dirty: (dirty: boolean) => void;
       onAction: (callback: (action: string) => void) => () => void;
       platform: string;

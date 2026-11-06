@@ -11,7 +11,7 @@ test("sample document: existing text edits, annotation, undo/redo, pages, saved 
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Good documents. Great possibilities." }),
+    page.getByRole("heading", { name: "Your PDF workspace." }),
   ).toBeVisible();
   await page.screenshot({ path: "work/home.png" });
   await page
@@ -116,13 +116,26 @@ test("real file import, text search, highlights, and dirty-document guard", asyn
   await page.getByLabel("Search document").press("Enter");
   await expect(page.getByText("1 of 1 matches")).toBeVisible();
   await page.getByRole("button", { name: "Highlight", exact: true }).click();
-  const r = await page.locator(".sheet").boundingBox();
-  await page.mouse.move(r!.x + 30, r!.y + 70);
+  const r = await page
+    .locator(".selectable-line")
+    .filter({ hasText: "A document to review." })
+    .boundingBox();
+  await page.mouse.move(r!.x + 1, r!.y + r!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(r!.x + 200, r!.y + 95);
+  await page.mouse.move(r!.x + r!.width - 1, r!.y + r!.height / 2, {
+    steps: 8,
+  });
   await page.mouse.up();
   await page.getByRole("button", { name: "Comments", exact: true }).click();
-  await expect(page.getByText("Highlight", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("No comments yet.", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Markup", exact: true }).click();
+  await expect(
+    page
+      .getByLabel("Page markup")
+      .locator('[data-annotation-type="Highlight"]'),
+  ).toHaveCount(1);
   await page
     .locator("input[type=file]")
     .first()

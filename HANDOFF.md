@@ -1,8 +1,8 @@
 # Folio handoff
 
-Project: `/Users/danielhung/Desktop/02. Projects/PDF_Editor`
+GitHub repository: `hungkaihsin/Folio`
 
-Daniel requested both a balanced everyday PDF editor and editing existing text, with macOS and Windows versions. The first release is Folio 0.1.0. Keep text editing honest: it removes/replaces one horizontal text line, preserves/substitutes fonts when possible, and shrinks longer replacements. It does not reflow full paragraphs or perform OCR.
+Daniel requested both a balanced everyday PDF editor and editing existing text, with macOS and Windows versions. Current release is Folio 0.7.0 (2026-11-01). Release packages are in release/v0.7.0/ so running older versions remain intact. Keep text editing honest: it removes/replaces one horizontal text line, preserves/substitutes fonts when possible, and preserves point size by default; shrinking requires explicit fitting. It does not reflow full paragraphs or perform OCR.
 
 Read README.md for commands, features, limits, security, licensing, and test details. Do not run /init. Keep documents local and source files protected. Keep AGPL/OFL notices. Do not add cloud services or silently overwrite originals.
 
@@ -19,6 +19,62 @@ Important fixes already made:
 - Duplicate pages are grafted from a snapshot so edits never mutate their sibling. Annotations are copied explicitly; pages with form widgets are rejected for duplication/merge to avoid broken field trees.
 - Native save checks canonical paths and inode aliases against all selected sources.
 
-Future priorities: broader real-world PDF corpus, robust multi-run/paragraph editing with layout/overflow previews, move/resize added objects, OCR, file associations, improved accessibility/contrast and keyboard navigation, Windows native smoke tests, Intel packaging, signing and notarization. The CI workflow is configured but has not been run remotely.
+Future priorities: broader real-world PDF corpus, robust multi-run/paragraph editing with layout/overflow previews, broader imported-object support, OCR, file associations, improved accessibility/contrast and keyboard navigation, Windows native smoke tests, Intel packaging, signing and notarization. The CI workflow is configured but has not been run remotely.
 
 See VERIFICATION.md for the final checks actually run in the initial build session. Do not infer Windows runtime success from cross-packaging.
+
+0.2.0 changes:
+- src/objects.ts persists managed text/image metadata alongside actual PDF Form streams; movement rewrites the content transform, rather than moving only the selection UI. Native annotation geometry is transformed according to subtype. Save/reopen, rotation, duplicate/merge, undo/redo and deletion are tested.
+- Legacy 0.1 objects are recovered only from the exact isolated /FolioN Form-stream pattern. Arbitrary imported graphics are not claimed as editable objects.
+- src/ObjectLayer.tsx and ObjectControls implement selection, drag, resize and numeric geometry. Read-mode double click edits text. Validation retains drafts.
+- src/i18n.ts provides English/Traditional Chinese UI strings. The selector persists locally; native labels update over validated IPC. It does not translate document contents.
+- src/ExportDialog.tsx and engine.exportFile support PDF/PNG/JPEG/TXT, page scopes, and image ZIPs. src/zip.ts uses stored ZIP entries with CRC32 and UTF-8 filenames. Native export shares source-path/inode protection with Save copy.
+- Additional engine and production UI regression suites are in tests/improvements.*. npm test includes both engine suites. The desktop test exercises native exports and locale changes; test:package now targets release/v0.7.0/mac-universal/Folio.app and runs both desktop workflows.
+
+0.3.0 font fidelity:
+- FontLibrary collects original Unicode-to-glyph observations via a MuPDF text device, avoiding broken/missing subset cmaps. Verify unknown cmap glyph outlines before trusting them. Same-family subset fonts are candidates; fallback is per character with a visible report.
+- Preserve baseline and point size; fitting is explicit. Text transforms must be proportional. Font previews block apply while pending or overflowing.
+- Explicit glyph drawing needs an explicit ToUnicode map repair for saved searchable text. Persist original font sources and imported cmap metadata with managed objects for future edits.
+- Never call addFont on the live journaled document: its object-number cache can reference detached objects after undo/branching. Reuse the overlay font resource or graft an anchor from a temporary PDF.
+- Noto Serif CJK TC is bundled with its OFL notice. Local font import supports OTF/TTF/TTC up to 40 MB; TTC faces are instantiated lazily.
+- tests/font-fidelity.test.ts and tests/font-ui.spec.ts cover the new paths. FOLIO_TEST_PDF optionally enables the private real-document regression fixture. Do not add the user's document to the repository or release.
+
+0.4.0 direct editing:
+- src/InlineTextEditor.tsx renders a textarea at the PDF baseline, with side-panel controls via a React portal. Existing-line Enter applies; object/new multiline Cmd/Ctrl+Enter applies; Esc cancels. Guard composition events. Keep draft editing separate from PDF undo history until Apply, and include text/format draft changes in native/browser close guards.
+- src/browserFont.ts repairs Unicode cmap coverage in a temporary SFNT copy, normalizes TrueType subset outlines for browser validation and retains glyph IDs. Preserve composite dependencies, clear reserved simple-glyph flags, rebuild loca/checksums, supply a missing post table. Never mutate the original PDF font program. TTC faces are selected from the original container. Unsupported programs return no browser bytes and show an honest preview warning.
+- FontLibrary caches full-font previews across keystrokes and only sends missing font bytes. Browser FontFace objects are removed when opening another document. Original/imported OTF containers are retained for browser previews because PDF embedding may strip the SFNT wrapper to raw CFF.
+- textBackdrop renders an export clone with just the selected source text removed; it never changes the live journal. This preserves page backgrounds and nearby images while typing. Existing source-path/inode protections remain.
+- FontFeedback can request browser font programs and deliver them to the inline editor. Keep its pending/error/overflow Apply guard. Raw-line color is now applied and persisted.
+- App version comes from package.json and is visible in the wordmark. On 2026-10-27 the user's active process was still the 0.2.0 bundle; do not kill it or overwrite it. New release is separate, and a preview must use an isolated profile to avoid touching unsaved work.
+- tests/inline-editor.spec.ts covers no-dialog editing, cancellation, draft protection, color, keyboard apply, simulated composition, and the exact screenshot passage with live embedded PMingLiU. FOLIO_TEST_PDF stays private and opt-in.
+
+0.5.0 matching and selection:
+- The source table cell 職稱：秘書長 is MicrosoftJhengHeiRegular at 12 pt. Its embedded subsets lack 測 and 試. No matching full JhengHei was found in the usual local Mac/Office font folders at verification time. Do not claim size detection solves absent glyphs or that this private cell can exactly render those characters without the full font.
+- FontFeedback and InlineTextEditor block unapproved missing-glyph substitution. UI passes allowSubstitution=false by default to engine edits; programmatic API omission retains compatibility. Full imported faces with matching normalized internal names supplement original-font candidates. Match nearby text uses a document: font selector while keeping the target baseline.
+- electron/font-catalog.cjs reads bounded SFNT/TTC name tables from fixed standard font roots. fonts:find validates main-frame IPC and accepts a font name, never a filesystem path. Match by internal names and regular-style aliases, retaining Bold/UI distinctions. No download, installation, network access or new browser permission. Do not loosen source-file protection.
+- src/TextSelectionLayer.tsx shares PDF-native selection geometry between Read and Highlight. selectText returns exact text plus character quads from MuPDF. HighlightText recomputes geometry inside the engine and saves one native annotation (0.5.0 included selected text contents; 0.6.0 leaves contents empty). Read exposes copy through a copy event/execCommand and a Highlight selection toolbar. Keep pointer cancellation, reverse selection, zoom and rotation accurate.
+- Legacy rectangular highlight API remains for old tests/documents; the current toolbar uses character selection. Area drawing belongs to Rectangle.
+- tests/selection-fonts.test.ts and tests/font-selection.spec.ts cover strict missing-font handling, metadata matching, style sampling, text copying and saved selection geometry. Native workflow also checks font IPC, the private cell and character-aligned highlighting. FOLIO_TEST_PDF stays opt-in; no private fixture or proprietary full font is bundled.
+
+0.6.0 workspace and review:
+- The user clarified this request is only for Folio: a professional modern design and separate Highlight/Comment actions. No AI/photo/video scope was requested.
+- src/annotations.ts splits Text/FreeText notes from all other markup. src/AnnotationPanel.tsx shares the two list views while retaining original native annotation indices for deletion. Existing markup contents remain in collapsed details; do not erase imported/older annotation text.
+- Engine highlightText leaves contents empty. Selection still uses exact PDF character quads and never creates a Text note. Comment is a separate manual note action; after applying it the UI returns to Read mode with Comments selected, rather than switching to object tools.
+- Toolbar labels, restrained blue-gray chrome, flat start screen, four inspector tabs and current-page review counts improve hierarchy. Highlight and Comment remain visibly labeled at 1000 × 680. PDF font styling/rendering is not changed by UI CSS.
+- tests/review-workflow.spec.ts covers category separation, save/reopen, explicit note creation, legacy data preservation, deletion after index shifts and compact English/Traditional Chinese layout. Browser-font metric checks use the PDF point size rather than a fractional zoom size to avoid browser subpixel text-metric quantization.
+- Original-font coverage limitations from 0.5.0 remain. No new dependency or outbound connection was added. Keep older releases and running app windows intact; new previews use a dedicated profile.
+
+0.7.0 clipboard, rotation and installers:
+- User explicitly requested copying/pasting images/text, rotating individual images and text boxes in both directions, a Mac DMG and a Windows installer. User confirmed DMG format. Keep the broader Acrobat gap review; do not claim full feature parity.
+- src/objects.ts applies quarter-turn matrices to real Form streams and displayed metadata. contentCommand emits decimal PDF numbers, never scientific notation. Rotations clamp inward near edges or reject when too large. Page rotation and object rotation remain separate.
+- Rotated managed-text edits draw into a local Form and map the baseline back, preserving orientation and font resources. InlineTextEditor rotates the input around its PDF baseline. FontLibrary.plan can retain the multiple declared families already used by a Folio-created mixed-script object. Arbitrary imported mixed-run formatting remains outside exact-match claims.
+- src/objectClipboard.ts exports just a chosen managed object plus required font resources as an isolated PDF fragment. It excludes neighboring page content and document actions. Pasting grafts that Form/font data into a new independent object, uniformly fitting to the target page if needed. Images also provide a transparent PNG preview for external apps; text supplies plain text.
+- electron/clipboard.cjs uses Electron 45's asynchronous ClipboardItem/Blob API. Do not use removed legacy readImage/writeBuffer APIs. Native Copy/Paste menu actions route to page operations or normal focused-input actions as appropriate. Validated narrow IPC only; no polling, generic clipboard format access or remote URL import. Clipboard tests snapshot/restore original clipboard formats in memory, ignoring empty items.
+- tests/clipboard-rotation.test.ts, clipboard-rotation.spec.ts and clipboard-desktop.mjs cover real directions, editing/geometry, exact four-turn pixel restoration, isolation, independent IDs, save/reopen, native clipboard interoperability, standard text-field paste, rejected writes and compact Chinese layout.
+- package:mac now makes a universal DMG; package:mac:app retains the arm64 directory-only developer option. package:win makes a bilingual NSIS setup wizard. Use signExecutable=false so Windows icons/version resources are applied even though signing is not configured. No valid Mac signing identity was available. Do not describe these unsigned artifacts as notarized/production-approved.
+- tests/mac-installer.mjs tests a copied app from a verified, read-only mounted DMG in a temporary Applications folder. Windows installer harness is configured for disposable Windows CI and has not been run from this Mac. Do not infer Windows or Intel execution success.
+- npm ci succeeds. npm audit now flags a published minimatch advisory through packaging dependencies; do not hide findings or apply npm's obsolete electron-builder downgrade. Packaging dependencies are excluded from app.asar. Review a compatible upstream fix separately.
+
+- Clean-install audit found Electron 45 had no dependency postinstall hook, so npm ci alone left node_modules/electron/dist absent. Root postinstall explicitly invokes the official install-electron command. Verify clean npm ci creates the executable; do not depend on an old manually cached node_modules runtime.
+
+- Windows NSIS build initially failed with macOS error -86 because the legacy default compiler was x86_64 and this host has no Rosetta. Set build.toolsets.nsis=1.2.1: the official checksum-pinned NSIS 3.12 unified bundle provides a native arm64 compiler. The Setup.exe then built successfully without installing Rosetta, Wine or extra Homebrew packages. Keep this setting for reproducible Apple Silicon cross-builds.

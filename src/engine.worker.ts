@@ -1,11 +1,13 @@
 import { PDFEngine } from "./engine";
 import fontUrl from "./assets/NotoSansCJKtc-Regular.otf?url";
-const ready = fetch(fontUrl)
-  .then((r) => {
+import serifUrl from "./assets/NotoSerifCJKtc-Regular.otf?url";
+const ready = Promise.all(
+  [fontUrl, serifUrl].map(async (url) => {
+    const r = await fetch(url);
     if (!r.ok) throw new Error("Cannot load the bundled font.");
-    return r.arrayBuffer();
-  })
-  .then((b) => new PDFEngine(new Uint8Array(b)));
+    return new Uint8Array(await r.arrayBuffer());
+  }),
+).then(([sans, serif]) => new PDFEngine(sans, serif));
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {
   queue = queue.then(async () => {
@@ -19,11 +21,17 @@ self.onmessage = ({ data }) => {
           "info",
           "render",
           "export",
+          "exportFile",
           "extract",
           "search",
+          "selectText",
           "undo",
           "redo",
           "edit",
+          "inspectFont",
+          "textBackdrop",
+          "loadFont",
+          "copyObject",
         ].includes(method)
       )
         throw new Error("Unknown operation.");

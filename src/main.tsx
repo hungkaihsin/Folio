@@ -35,6 +35,9 @@ import {
   Keyboard,
   WarningCircle,
   SpinnerGap,
+  Cursor,
+  Export,
+  ClipboardText,
 } from "@phosphor-icons/react";
 import { engine } from "./client";
 import type {
@@ -45,10 +48,25 @@ import type {
   RenderedPage,
   RGB,
   TextLine,
+  PageObject,
+  ExportOptions,
 } from "./types";
 import "./style.css";
+import { TextSelectionLayer } from "./TextSelectionLayer";
+import { ObjectLayer, ObjectControls } from "./ObjectLayer";
+import {
+  InlineTextEditor,
+  clearEditingFonts,
+  type TextDraft,
+} from "./InlineTextEditor";
+import packageInfo from "../package.json";
+import { AnnotationPanel } from "./AnnotationPanel";
+import { readClipboard, writeClipboard, editingField } from "./clipboard";
+import { ExportDialog } from "./ExportDialog";
+import { tr, getLocale, setLocale, type Locale } from "./i18n";
 
 type Tool =
+  | "select"
   | "read"
   | "edit"
   | "text"
@@ -63,6 +81,7 @@ const tools: {
   icon: typeof CursorText;
   key: string;
 }[] = [
+  { id: "select", label: "Select / move", icon: Cursor, key: "M" },
   { id: "read", label: "Read & select", icon: CursorText, key: "V" },
   { id: "edit", label: "Edit text", icon: PencilSimple, key: "E" },
   { id: "text", label: "Add text", icon: TextT, key: "T" },
@@ -73,10 +92,13 @@ const tools: {
   { id: "note", label: "Comment", icon: Note, key: "C" },
 ];
 const hints: Record<Tool, string> = {
-  read: "Select text to copy. Use the page list to navigate.",
-  edit: "Click a text line to replace it. Longer text shrinks to fit the original line.",
+  select:
+    "Click an added object to select it. Drag to move, use the corner to resize, or double-click text to edit.",
+  read: "Select text to copy. Double-click a line to edit it.",
+  edit: "Click a text line to replace it. Font coverage and size are previewed before applying.",
   text: "Click the page to place new text.",
-  highlight: "Drag across a line or area to highlight it.",
+  highlight:
+    "Drag to select text, just as in Read mode. Release to highlight the selected characters.",
   ink: "Draw directly on the page. Each stroke can be undone.",
   rectangle: "Drag to draw a rectangle.",
   image: "Click the page to place a PNG or JPEG image.",
@@ -140,7 +162,7 @@ function Thumb({
       ref={ref}
       className={`thumbnail ${selected ? "selected" : ""}`}
       onClick={onClick}
-      aria-label={`Page ${index + 1}`}
+      aria-label={`${tr("Page")} ${index + 1}`}
       aria-current={selected ? "page" : undefined}
     >
       <div className="thumb-sheet">
@@ -151,6 +173,21 @@ function Thumb({
   );
 }
 function App() {
+  const [locale, changeLocale] = useState<Locale>(getLocale),
+    [exporting, setExporting] = useState(false),
+    [selectedId, setSelectedId] = useState<string | null>(null),
+    [fontFamily, setFontFamily] = useState("auto"),
+    [fitOriginal, setFitOriginal] = useState(false),
+    [allowSubstitution, setAllowSubstitution] = useState(false),
+    [pickingStyle, setPickingStyle] = useState(false),
+    [fontBlocked, setFontBlocked] = useState(false),
+    [customFonts, setCustomFonts] = useState<{ key: string; name: string }[]>(
+      [],
+    );
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    window.desktop?.language(locale);
+  }, [locale]);
   const [doc, setDoc] = useState<DocumentInfo | null>(null),
     [name, setName] = useState("Untitled.pdf"),
     [page, setPage] = useState(0),
@@ -171,23 +208,74 @@ function App() {
     [query, setQuery] = useState(""),
     [hits, setHits] = useState<{ page: number; rect: Rect }[]>([]),
     [hit, setHit] = useState(0),
-    [tab, setTab] = useState<"tools" | "comments" | "forms">("tools");
+    [tab, setTab] = useState<"tools" | "comments" | "markup" | "forms">(
+      "tools",
+    );
   const [modal, setModal] = useState<{
-    kind: "text" | "replace" | "note" | "password" | "discard";
+    kind: "text" | "replace" | "object" | "note" | "password" | "discard";
+    object?: PageObject;
     text: string;
     point?: Point;
     line?: TextLine;
     resolve?: (v: any) => void;
   } | null>(null);
+  const [editorHost, setEditorHost] = useState<HTMLDivElement | null>(null);
+  const [editorActionsHost, setEditorActionsHost] =
+    useState<HTMLDivElement | null>(null);
+  const inline =
+    modal && ["text", "replace", "object"].includes(modal.kind)
+      ? (modal as TextDraft)
+      : null;
+  const originalColor = inline?.line?.color || inline?.object?.color;
+  const originalColorHex = originalColor
+    ? "#" +
+      originalColor
+        .map((v) =>
+          Math.round(v * 255)
+            .toString(16)
+            .padStart(2, "0"),
+        )
+        .join("")
+    : color;
+  const draftDirty =
+    !!inline &&
+    (inline.text !== (inline.line?.text || inline.object?.text || "") ||
+      (inline.kind !== "text" &&
+        (fontFamily !== "original" ||
+          size !== (inline.line?.size || inline.object?.size || 14) ||
+          color !== originalColorHex ||
+          fitOriginal)));
   const [drag, setDrag] = useState<Point[] | null>(null),
     [viewportWidth, setViewportWidth] = useState(900);
   const viewport = useRef<HTMLDivElement>(null),
     sheet = useRef<HTMLDivElement>(null),
     fileInput = useRef<HTMLInputElement>(null),
     imageInput = useRef<HTMLInputElement>(null),
+    fontInput = useRef<HTMLInputElement>(null),
     search = useRef<HTMLInputElement>(null),
     pendingFile = useRef<{ bytes: Uint8Array; name: string } | null>(null),
     actions = useRef<Record<string, () => void>>({});
+  useEffect(() => setSelectedId(null), [page]);
+  useEffect(() => {
+    if (!inline) setPickingStyle(false);
+  }, [!!inline]);
+  const chooseTool = (id: Tool) => {
+    setTool(id);
+    setTab(
+      id === "note"
+        ? "comments"
+        : ["highlight", "ink", "rectangle"].includes(id)
+          ? "markup"
+          : "tools",
+    );
+  };
+  const selected = view?.objects.find((o) => o.id === selectedId);
+  const pastePoint = useRef<Point | null>(null),
+    pasteOffset = useRef(0);
+  useEffect(() => {
+    pastePoint.current = null;
+    pasteOffset.current = 0;
+  }, [page, name]);
   const dirty = !!doc && doc.position !== savedPosition,
     info = doc?.pages[page];
   const scale =
@@ -205,16 +293,16 @@ function App() {
     [],
   );
   useEffect(() => {
-    window.desktop?.dirty(dirty);
-    document.title = `${dirty ? "● " : ""}${doc ? name + " · " : ""}Folio`;
-  }, [dirty, name, doc]);
+    window.desktop?.dirty(dirty || draftDirty);
+    document.title = `${dirty || draftDirty ? "● " : ""}${doc ? name + " · " : ""}Folio`;
+  }, [dirty, draftDirty, name, doc]);
   useEffect(() => {
     const fn = (e: BeforeUnloadEvent) => {
-      if (dirty && !window.desktop) e.preventDefault();
+      if ((dirty || draftDirty) && !window.desktop) e.preventDefault();
     };
     window.addEventListener("beforeunload", fn);
     return () => window.removeEventListener("beforeunload", fn);
-  }, [dirty]);
+  }, [dirty, draftDirty]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 4500);
@@ -262,13 +350,15 @@ function App() {
     setHit(0);
   }, [revision]);
   async function run(label: string, fn: () => Promise<void>) {
-    if (busy) return;
+    if (busy) return false;
     setBusy(label);
     setError("");
     try {
       await fn();
+      return true;
     } catch (e) {
       report(e);
+      return false;
     } finally {
       setBusy("");
     }
@@ -280,6 +370,7 @@ function App() {
     );
   }
   function loaded(d: DocumentInfo, n: string) {
+    clearEditingFonts();
     setDoc(d);
     setName(n);
     setSavedPosition(d.position);
@@ -287,6 +378,7 @@ function App() {
     setView(null);
     setRevision((v) => v + 1);
     setTool("read");
+    setSelectedId(null);
     setQuery("");
     setHits([]);
   }
@@ -395,10 +487,42 @@ function App() {
     });
   }
   async function edit(e: Edit) {
-    await run("Applying edit", async () => {
+    return run("Applying edit", async () => {
       const d = await engine.edit(e);
       setDoc(d);
       setPage((p) => Math.min(p, d.pages.length - 1));
+      if (e.kind === "note") {
+        setSelectedId(null);
+        setTool("read");
+        setTab("comments");
+      } else if (
+        d.focusObjectId &&
+        [
+          "text",
+          "image",
+          "highlight",
+          "rectangle",
+          "ink",
+          "note",
+          "objectPaste",
+        ].includes(e.kind)
+      ) {
+        setSelectedId(d.focusObjectId);
+        setTool("select");
+        setTab("tools");
+      }
+      if (
+        [
+          "objectDelete",
+          "removeAnnotation",
+          "rotate",
+          "move",
+          "duplicate",
+          "delete",
+          "blank",
+        ].includes(e.kind)
+      )
+        setSelectedId(null);
       setRevision((v) => v + 1);
     });
   }
@@ -407,6 +531,7 @@ function App() {
     await run("Undoing", async () => {
       const d = await engine.undo();
       setDoc(d);
+      setSelectedId(null);
       setPage((p) => Math.min(p, d.pages.length - 1));
       setRevision((v) => v + 1);
     });
@@ -416,6 +541,7 @@ function App() {
     await run("Redoing", async () => {
       const d = await engine.redo();
       setDoc(d);
+      setSelectedId(null);
       setPage((p) => Math.min(p, d.pages.length - 1));
       setRevision((v) => v + 1);
     });
@@ -441,6 +567,110 @@ function App() {
       setToast("Your edited copy has been saved.");
     });
   }
+  async function exportFile(options: ExportOptions) {
+    if (!doc) return;
+    const ok = await run("Exporting file", async () => {
+      const file = await engine.exportFile(options, name);
+      if (window.desktop) {
+        const target = await window.desktop.exportFile(file);
+        if (!target) return;
+      } else {
+        const url = URL.createObjectURL(
+            new Blob([file.bytes as BlobPart], { type: file.mime }),
+          ),
+          link = document.createElement("a");
+        link.href = url;
+        link.download = file.name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      }
+      if (
+        options.format === "pdf" &&
+        options.pages.length === doc.pages.length &&
+        options.pages.every((p, i) => p === i)
+      )
+        setSavedPosition(doc.position);
+      setToast("Your file has been exported.");
+      setExporting(false);
+    });
+  }
+  function editObject(object: PageObject) {
+    setAllowSubstitution(false);
+    if (!doc?.editable || inline) return;
+    setTab("tools");
+    if (object.kind !== "text" || object.id.startsWith("annotation:")) return;
+    setSelectedId(object.id);
+    setSize(object.size || 14);
+    if (object.color)
+      setColor(
+        "#" +
+          object.color
+            .map((v) =>
+              Math.round(v * 255)
+                .toString(16)
+                .padStart(2, "0"),
+            )
+            .join(""),
+      );
+    setFontFamily("original");
+    setFitOriginal(false);
+    setFontBlocked(true);
+    setModal({ kind: "object", text: object.text || "", object });
+  }
+  function editLine(line: TextLine) {
+    setAllowSubstitution(false);
+    if (!doc?.editable || inline) return;
+    setTab("tools");
+    setColor(
+      "#" +
+        line.color
+          .map((v) =>
+            Math.round(v * 255)
+              .toString(16)
+              .padStart(2, "0"),
+          )
+          .join(""),
+    );
+    const object =
+      line.objectId && view?.objects.find((o) => o.id === line.objectId);
+    if (object) {
+      editObject(object);
+      return;
+    }
+    setSize(line.size);
+    setFontFamily("original");
+    setFitOriginal(false);
+    setFontBlocked(true);
+    setModal({ kind: "replace", text: line.text, line });
+  }
+  async function loadFont(bytes: Uint8Array, name: string) {
+    await run("Loading font", async () => {
+      const font = await engine.loadFont(bytes, name);
+      setCustomFonts((f) => [...f, ...font]);
+      const requested = (
+        modal?.line?.font ||
+        modal?.object?.sourceFont ||
+        ""
+      ).replace(/^[A-Z]{6}\+/, "");
+      setFontBlocked(true);
+      setFontFamily(
+        (
+          font.find((f) => f.name.toLowerCase() === requested.toLowerCase()) ||
+          font[0]
+        ).key,
+      );
+    });
+  }
+  async function importFont() {
+    if (window.desktop) {
+      try {
+        const file = await window.desktop.open("font");
+        if (file) await loadFont(file.bytes, file.name);
+      } catch (e) {
+        report(e);
+      }
+    } else fontInput.current?.click();
+  }
   async function merge() {
     try {
       if (window.desktop) {
@@ -464,26 +694,153 @@ function App() {
       report(e);
     }
   }
+  async function copySelected() {
+    if (
+      !selected ||
+      !["text", "image"].includes(selected.kind) ||
+      selected.id.startsWith("annotation:")
+    )
+      return;
+    try {
+      const content = await engine.copyObject(page, selected.id);
+      await writeClipboard(content);
+      setToast("Selected object copied.");
+    } catch (e) {
+      report(e);
+    }
+  }
+  async function pasteClipboard(data?: DataTransfer) {
+    if (busy || modal || exporting) return;
+    if (!doc || !view) {
+      setToast("Open or create a PDF before pasting.");
+      return;
+    }
+    if (!doc.editable) {
+      report(new Error("This document is read only."));
+      return;
+    }
+    const base = pastePoint.current || [40, 40],
+      offset = pasteOffset.current % 60;
+    const point: Point = [
+      Math.max(8, Math.min(view.width - 80, base[0] + offset)),
+      Math.max(8, Math.min(view.height - 80, base[1] + offset)),
+    ];
+    let content: Awaited<ReturnType<typeof readClipboard>> = null;
+    const ok = await run("Reading clipboard", async () => {
+      content = await readClipboard(data);
+    });
+    if (!ok) return;
+    const value = content as Awaited<ReturnType<typeof readClipboard>>;
+    if (!value) {
+      report(new Error("Clipboard has no supported text or image."));
+      return;
+    }
+    if (value.kind === "text") {
+      if (!value.text.trim()) {
+        setToast("The clipboard is empty.");
+        return;
+      }
+      if (value.text.length > 100000) {
+        report(new Error("Paste up to 100,000 characters at a time."));
+        return;
+      }
+      setTool("text");
+      setTab("tools");
+      setFontFamily("auto");
+      setSize(14);
+      setAllowSubstitution(false);
+      setFontBlocked(true);
+      setModal({ kind: "text", text: value.text, point });
+    } else if (value.kind === "object") {
+      await edit({ kind: "objectPaste", page, point, bytes: value.bytes });
+    } else {
+      try {
+        const image = await createImageBitmap(
+          new Blob([value.bytes as BlobPart]),
+        );
+        const pixels = image.width * image.height;
+        image.close();
+        if (pixels > 18000000)
+          throw new Error("Choose a clipboard image of at most 18 megapixels.");
+        await edit({
+          kind: "image",
+          page,
+          point,
+          bytes: value.bytes,
+          width: Math.min(240, view.width - point[0] - 8),
+        });
+      } catch (e) {
+        report(e);
+      }
+    }
+    pasteOffset.current += 12;
+  }
+  useEffect(() => {
+    const paste = (e: ClipboardEvent) => {
+      if (editingField(e.target) || modal || busy || exporting) return;
+      e.preventDefault();
+      void pasteClipboard(e.clipboardData || undefined);
+    };
+    const copy = (e: ClipboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        editingField(e.target) ||
+        modal ||
+        busy ||
+        tool !== "select" ||
+        !selected
+      )
+        return;
+      if (
+        ["text", "image"].includes(selected.kind) &&
+        !selected.id.startsWith("annotation:")
+      ) {
+        e.preventDefault();
+        void copySelected();
+      }
+    };
+    window.addEventListener("paste", paste);
+    window.addEventListener("copy", copy);
+    return () => {
+      window.removeEventListener("paste", paste);
+      window.removeEventListener("copy", copy);
+    };
+  }, [doc, view, page, selected, tool, busy, modal, exporting]);
   actions.current = {
     open: () => void chooseOpen(),
     new: () => void newDocument(),
     save: () => void save(),
+    export: () => setExporting(true),
     undo: () => void undo(),
     redo: () => void redo(),
+    pastePage: () => void pasteClipboard(),
   };
   useEffect(
     () =>
       window.desktop?.onAction((a) => {
-        if (busy || modal) return;
+        if (busy) return;
+        if (a === "copy" || a === "paste") {
+          if (editingField(document.activeElement)) {
+            void window.desktop?.nativeClipboard(a).catch(report);
+          } else if (!modal && !exporting) {
+            if (a === "paste") void pasteClipboard();
+            else if (tool === "select" && selected) void copySelected();
+            else void window.desktop?.nativeClipboard("copy").catch(report);
+          }
+          return;
+        }
         if (
           ["undo", "redo"].includes(a) &&
           (document.activeElement instanceof HTMLInputElement ||
             document.activeElement instanceof HTMLTextAreaElement)
-        )
+        ) {
+          document.execCommand(a);
           return;
+        }
+        if (modal) return;
         actions.current[a]?.();
       }),
-    [busy, modal],
+    [busy, modal, exporting, tool, selected, doc, view, page],
   );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -491,11 +848,25 @@ function App() {
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
         e.target instanceof HTMLSelectElement ||
-        modal
+        modal ||
+        exporting ||
+        e.isComposing ||
+        e.key === "Process"
       )
         return;
       if (e.metaKey || e.ctrlKey) {
-        if (e.key === "f") {
+        if (
+          !window.desktop &&
+          e.key.toLowerCase() === "c" &&
+          tool === "select" &&
+          selected
+        ) {
+          e.preventDefault();
+          void copySelected();
+        } else if (e.key.toLowerCase() === "e" && e.shiftKey) {
+          e.preventDefault();
+          setExporting(true);
+        } else if (e.key === "f") {
           e.preventDefault();
           search.current?.focus();
         } else if (
@@ -516,8 +887,39 @@ function App() {
         return;
       }
       if (busy) return;
+      if (tool === "select" && selected) {
+        if (["Delete", "Backspace"].includes(e.key)) {
+          e.preventDefault();
+          void edit({ kind: "objectDelete", page, id: selected.id });
+          return;
+        }
+        const delta = (
+          {
+            ArrowLeft: [-1, 0],
+            ArrowRight: [1, 0],
+            ArrowUp: [0, -1],
+            ArrowDown: [0, 1],
+          } as Record<string, number[]>
+        )[e.key];
+        if (delta && info) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1,
+            r = selected.rect,
+            w = r[2] - r[0],
+            h = r[3] - r[1],
+            x = Math.max(0, Math.min(info.width - w, r[0] + delta[0] * step)),
+            y = Math.max(0, Math.min(info.height - h, r[1] + delta[1] * step));
+          void edit({
+            kind: "objectTransform",
+            page,
+            id: selected.id,
+            rect: [x, y, x + w, y + h],
+          });
+          return;
+        }
+      }
       const t = tools.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
-      if (t) setTool(t.id);
+      if (t) chooseTool(t.id);
       if (doc && e.key === "ArrowRight")
         setPage((p) => Math.min(doc.pages.length - 1, p + 1));
       if (e.key === "ArrowLeft") setPage((p) => Math.max(0, p - 1));
@@ -525,7 +927,7 @@ function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [doc, busy, modal]);
+  }, [doc, busy, modal, exporting, selected, tool, page, info]);
   function point(e: React.PointerEvent): Point {
     const r = sheet.current!.getBoundingClientRect();
     return [
@@ -555,9 +957,19 @@ function App() {
     }
   }
   function pointerDown(e: React.PointerEvent) {
-    if (!ready || tool === "read" || tool === "edit") return;
+    if (inline || !ready || ["read", "edit", "highlight"].includes(tool))
+      return;
+    if (tool === "select") {
+      setSelectedId(null);
+      return;
+    }
     const p = point(e);
     if (tool === "text" || tool === "note") {
+      if (tool === "text") {
+        setAllowSubstitution(false);
+        setFontFamily("auto");
+        setFontBlocked(true);
+      }
       setModal({ kind: tool, text: "", point: p });
       return;
     }
@@ -603,11 +1015,12 @@ function App() {
       });
   }
   async function submitModal() {
-    if (!modal) return;
+    if (!modal || busy) return;
     const m = modal;
-    setModal(null);
-    if (m.kind === "password") {
-      await run("Unlocking PDF", async () => {
+    let ok = false;
+    if (inline && fontBlocked) return;
+    if (m.kind === "password")
+      ok = await run("Unlocking PDF", async () => {
         try {
           loaded(
             await engine.open(pendingFile.current!.bytes, m.text),
@@ -615,26 +1028,51 @@ function App() {
           );
           pendingFile.current = null;
         } catch (e) {
-          if ((e as Error).message === "PASSWORD_REQUIRED") {
-            setModal({ ...m, text: "" });
+          if ((e as Error).message === "PASSWORD_REQUIRED")
             throw new Error("Incorrect password. Try again.");
-          }
           throw e;
         }
       });
-    } else if (m.kind === "replace")
-      await edit({ kind: "replace", page, line: m.line!.id, text: m.text });
+    else if (m.kind === "replace")
+      ok = await edit({
+        kind: "replace",
+        page,
+        line: m.line!.id,
+        text: m.text,
+        font: fontFamily,
+        size,
+        fitOriginal,
+        allowSubstitution,
+        color: rgb,
+      });
+    else if (m.kind === "object")
+      ok = await edit({
+        kind: "objectText",
+        page,
+        id: m.object!.id,
+        text: m.text,
+        size,
+        color: rgb,
+        font: fontFamily,
+        allowSubstitution,
+        width:
+          m.object!.wrapWidth ||
+          Math.max(m.object!.rect[2] - m.object!.rect[0], size * 3),
+      });
     else if (m.kind === "text")
-      await edit({
+      ok = await edit({
         kind: "text",
         page,
         point: m.point!,
         text: m.text,
         size,
         color: rgb,
+        font: fontFamily,
+        allowSubstitution,
       });
     else if (m.kind === "note")
-      await edit({ kind: "note", page, point: m.point!, text: m.text });
+      ok = await edit({ kind: "note", page, point: m.point!, text: m.text });
+    if (ok) setModal(null);
   }
   async function doSearch() {
     if (!doc) return;
@@ -651,7 +1089,23 @@ function App() {
       ? "No selectable text on this page. Scanned PDFs need OCR before text can be edited."
       : hints[tool];
   return (
-    <div className={`app ${doc ? "has-document" : ""}`}>
+    <div
+      className={`app ${doc ? "has-document" : ""}`}
+      onClickCapture={(e) => {
+        if (
+          inline &&
+          !(e.target as HTMLElement).closest(
+            ".inline-text-editor, .inline-text-controls, .style-picker, .zoom-controls, .language-switch, .error-banner",
+          )
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          setToast(
+            "Apply or cancel the current text edit before using another tool.",
+          );
+        }
+      }}
+    >
       <input
         ref={fileInput}
         hidden
@@ -682,12 +1136,30 @@ function App() {
             });
         }}
       />
+      <input
+        ref={fontInput}
+        type="file"
+        hidden
+        accept=".ttf,.otf,.ttc"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file)
+            await loadFont(new Uint8Array(await file.arrayBuffer()), file.name);
+        }}
+      />
       <header className="topbar">
         <div className="wordmark">
           <div className="brand-icon">
             <Stack size={22} weight="bold" />
           </div>
-          folio
+          {tr("folio")}
+          <span
+            className="app-version"
+            aria-label={`Folio version ${packageInfo.version}`}
+          >
+            {packageInfo.version}
+          </span>
           <span className="brand-divider" />
         </div>
         <div className="document-name">
@@ -695,18 +1167,33 @@ function App() {
             <>
               <FilePdf size={18} />
               <span>{name}</span>
-              {dirty && <span className="unsaved" title="Unsaved changes" />}
+              {(dirty || draftDirty) && (
+                <span className="unsaved" title={tr("Unsaved changes")} />
+              )}
             </>
           ) : (
-            <span className="app-caption">
-              A little more possible with every PDF.
-            </span>
+            <span className="app-caption">{tr("Local PDF workspace")}</span>
           )}
         </div>
         <div className="top-actions">
+          <label className="language-switch">
+            <span>{tr("Language / 語言")}</span>
+            <select
+              aria-label="Language / 語言"
+              value={locale}
+              onChange={(e) => {
+                const value = e.target.value as Locale;
+                setLocale(value);
+                changeLocale(value);
+              }}
+            >
+              <option value="en">{tr("English")}</option>
+              <option value="zh-TW">繁體中文</option>
+            </select>
+          </label>
           <span className="local-label">
             <LockSimple size={13} />
-            On your device
+            {tr("On your device")}
           </span>
           <button
             className="button subtle"
@@ -714,24 +1201,34 @@ function App() {
             disabled={!!busy}
           >
             <FolderOpen size={17} />
-            Open PDF
+            {tr("Open PDF")}
           </button>
+          {doc && (
+            <button
+              className="button subtle"
+              onClick={() => setExporting(true)}
+              disabled={!!busy}
+            >
+              <Export size={17} />
+              {tr("Export")}
+            </button>
+          )}
           <button
             className="button primary"
             onClick={save}
             disabled={!doc || !!busy}
           >
             <DownloadSimple size={17} />
-            Save copy
+            {tr("Save copy")}
           </button>
         </div>
       </header>
       {doc ? (
         <>
-          <nav className="toolbar" aria-label="PDF tools">
+          <nav className="toolbar" aria-label={tr("PDF tools")}>
             <div className="tool-group">
               <IconButton
-                title="Toggle pages"
+                title={tr("Toggle pages")}
                 onClick={() => setSidebar((s) => !s)}
               >
                 <SidebarSimple size={19} />
@@ -740,33 +1237,33 @@ function App() {
               {tools.map((t) => (
                 <button
                   key={t.id}
-                  className={`tool ${tool === t.id ? "active" : ""}`}
-                  title={`${t.label} (${t.key})`}
-                  aria-label={t.label}
+                  className={`tool tool-${t.id} ${tool === t.id ? "active" : ""}`}
+                  title={`${tr(t.label)} (${t.key})`}
+                  aria-label={tr(t.label)}
                   aria-pressed={tool === t.id}
                   disabled={!!busy || (!doc.editable && t.id !== "read")}
-                  onClick={() => {
-                    setTool(t.id);
-                    setTab("tools");
-                  }}
+                  onClick={() => chooseTool(t.id)}
                 >
-                  <t.icon size={19} />
-                  {["read", "edit", "text"].includes(t.id) && (
-                    <span>{t.id === "read" ? "Read" : t.label}</span>
+                  {t.id === "highlight" && (
+                    <span className="tool-group-divider" aria-hidden="true" />
                   )}
+                  <t.icon size={18} />
+                  <span className="tool-label">
+                    {tr(t.id === "read" ? "Read" : t.label)}
+                  </span>
                 </button>
               ))}
             </div>
             <div className="tool-group">
               <IconButton
-                title="Undo"
+                title={tr("Undo")}
                 disabled={!doc.canUndo || !!busy}
                 onClick={undo}
               >
                 <ArrowUUpLeft size={19} />
               </IconButton>
               <IconButton
-                title="Redo"
+                title={tr("Redo")}
                 disabled={!doc.canRedo || !!busy}
                 onClick={redo}
               >
@@ -778,7 +1275,7 @@ function App() {
             {sidebar && (
               <aside className="pages-panel">
                 <div className="panel-heading">
-                  <span>Pages</span>
+                  <span>{tr("Pages")}</span>
                   <span className="count">{doc.pages.length}</span>
                 </div>
                 <div className="page-list">
@@ -801,10 +1298,10 @@ function App() {
                     disabled={!!busy || !doc.editable}
                   >
                     <Plus size={16} />
-                    Merge PDF
+                    {tr("Merge PDF")}
                   </button>
                   <IconButton
-                    title="Insert blank page"
+                    title={tr("Insert blank page")}
                     disabled={!!busy || !doc.editable}
                     onClick={() => edit({ kind: "blank", page })}
                   >
@@ -817,16 +1314,17 @@ function App() {
               <div className="document-controls">
                 <div className="page-navigation">
                   <IconButton
-                    title="Previous page"
+                    title={tr("Previous page")}
                     disabled={page === 0 || !!busy}
                     onClick={() => setPage((p) => p - 1)}
                   >
                     <ArrowLeft size={15} />
                   </IconButton>
                   <span>
-                    Page{" "}
+                    {tr("Page")}{" "}
                     <input
-                      aria-label="Page number"
+                      aria-label={tr("Page number")}
+                      disabled={!!inline || !!busy}
                       key={`${page}-${doc.pages.length}`}
                       type="number"
                       min="1"
@@ -847,10 +1345,10 @@ function App() {
                         if (e.key === "Enter") e.currentTarget.blur();
                       }}
                     />{" "}
-                    of {doc.pages.length}
+                    {tr("of")} {doc.pages.length}
                   </span>
                   <IconButton
-                    title="Next page"
+                    title={tr("Next page")}
                     disabled={page === doc.pages.length - 1 || !!busy}
                     onClick={() => setPage((p) => p + 1)}
                   >
@@ -859,7 +1357,7 @@ function App() {
                 </div>
                 <div className="zoom-controls">
                   <IconButton
-                    title="Zoom out"
+                    title={tr("Zoom out")}
                     onClick={() => {
                       setFit(false);
                       setZoom(Math.max(0.25, scale - 0.1));
@@ -869,7 +1367,7 @@ function App() {
                   </IconButton>
                   <button
                     className="zoom-number"
-                    title="Reset zoom"
+                    title={tr("Reset zoom")}
                     onClick={() => {
                       setFit(false);
                       setZoom(1);
@@ -878,7 +1376,7 @@ function App() {
                     {Math.round(scale * 100)}%
                   </button>
                   <IconButton
-                    title="Zoom in"
+                    title={tr("Zoom in")}
                     onClick={() => {
                       setFit(false);
                       setZoom(Math.min(3, scale + 0.1));
@@ -888,7 +1386,7 @@ function App() {
                   </IconButton>
                   <span className="separator" />
                   <IconButton
-                    title="Fit to width"
+                    title={tr("Fit to width")}
                     className={`icon-button ${fit ? "chosen" : ""}`}
                     onClick={() => setFit(true)}
                   >
@@ -916,45 +1414,132 @@ function App() {
                       alt={`PDF page ${page + 1}`}
                       draggable={false}
                     />
-                    {ready && ["read", "edit"].includes(tool) && (
+                    {!inline &&
+                      ready &&
+                      ["read", "highlight"].includes(tool) && (
+                        <TextSelectionLayer
+                          key={`${page}-${revision}-${tool}`}
+                          page={page}
+                          scale={scale}
+                          lines={view.lines}
+                          highlight={tool === "highlight"}
+                          editable={doc.editable}
+                          onEdit={editLine}
+                          onHighlight={async (start, end) =>
+                            edit({
+                              kind: "highlightText",
+                              page,
+                              start,
+                              end,
+                              color: [1, 0.79, 0.15],
+                            })
+                          }
+                        />
+                      )}
+                    {!inline && ready && tool === "edit" && (
                       <div className="text-layer">
-                        {view.lines.map((l) =>
-                          tool === "edit" ? (
+                        {view.lines.map((l) => (
+                          <button
+                            key={l.id}
+                            className="text-hit"
+                            aria-label={`${tr("Edit line:")} ${l.text}`}
+                            title={`${l.font} · ${l.size} pt`}
+                            style={{
+                              left: l.rect[0] * scale,
+                              top: l.rect[1] * scale,
+                              width: (l.rect[2] - l.rect[0]) * scale,
+                              height: (l.rect[3] - l.rect[1]) * scale,
+                            }}
+                            onClick={() => editLine(l)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {!inline && ready && tool === "select" && (
+                      <ObjectLayer
+                        objects={view.objects}
+                        selected={selectedId}
+                        scale={scale}
+                        width={view.width}
+                        height={view.height}
+                        onSelect={(id) => {
+                          setSelectedId(id);
+                          setTab("tools");
+                        }}
+                        onTransform={(id, rect) =>
+                          void edit({ kind: "objectTransform", page, id, rect })
+                        }
+                        onEdit={editObject}
+                      />
+                    )}
+                    {inline && (
+                      <InlineTextEditor
+                        draft={inline}
+                        page={page}
+                        scale={scale}
+                        pageWidth={view.width}
+                        pageHeight={view.height}
+                        host={editorHost}
+                        actionsHost={editorActionsHost}
+                        size={size}
+                        color={color}
+                        font={fontFamily}
+                        fitOriginal={fitOriginal}
+                        customFonts={customFonts}
+                        blocked={fontBlocked}
+                        busy={!!busy}
+                        onText={(text) =>
+                          setModal((m) => (m ? { ...m, text } : m))
+                        }
+                        onSize={setSize}
+                        onColor={setColor}
+                        onFont={setFontFamily}
+                        onFit={setFitOriginal}
+                        onBlocked={setFontBlocked}
+                        onImport={() => void importFont()}
+                        onApply={() => void submitModal()}
+                        onCancel={() => setModal(null)}
+                        allowSubstitution={allowSubstitution}
+                        onAllowSubstitution={setAllowSubstitution}
+                        pickingStyle={pickingStyle}
+                        onPickStyle={() => setPickingStyle((v) => !v)}
+                      />
+                    )}
+                    {inline && pickingStyle && (
+                      <div className="style-picker">
+                        {view.lines
+                          .filter((l) => l.text.trim() && l.horizontal)
+                          .map((l) => (
                             <button
                               key={l.id}
-                              aria-label={`Edit line: ${l.text}`}
-                              title={`${l.font} · ${Math.round(l.size)} pt`}
-                              className="text-hit"
+                              className="style-sample"
+                              aria-label={`${tr("Match style from:")} ${l.text}`}
+                              title={`${l.font} · ${l.size} pt`}
                               style={{
                                 left: l.rect[0] * scale,
                                 top: l.rect[1] * scale,
                                 width: (l.rect[2] - l.rect[0]) * scale,
                                 height: (l.rect[3] - l.rect[1]) * scale,
                               }}
-                              onClick={() =>
-                                setModal({
-                                  kind: "replace",
-                                  text: l.text,
-                                  line: l,
-                                })
-                              }
+                              onClick={() => {
+                                setFontBlocked(true);
+                                setFontFamily("document:" + l.font);
+                                setSize(l.size);
+                                setColor(
+                                  "#" +
+                                    l.color
+                                      .map((v) =>
+                                        Math.round(v * 255)
+                                          .toString(16)
+                                          .padStart(2, "0"),
+                                      )
+                                      .join(""),
+                                );
+                                setAllowSubstitution(false);
+                                setPickingStyle(false);
+                              }}
                             />
-                          ) : (
-                            <span
-                              key={l.id}
-                              className="selectable-line"
-                              style={{
-                                left: l.rect[0] * scale,
-                                top: l.rect[1] * scale,
-                                fontSize: l.size * scale,
-                                width: (l.rect[2] - l.rect[0]) * scale,
-                                height: (l.rect[3] - l.rect[1]) * scale,
-                              }}
-                            >
-                              {l.text}
-                            </span>
-                          ),
-                        )}
+                          ))}
                       </div>
                     )}
                     {hits
@@ -1005,7 +1590,7 @@ function App() {
                 {(rendering || busy) && (
                   <div className="loading">
                     <SpinnerGap className="spin" size={16} />
-                    {busy || "Rendering page"}
+                    {tr(busy || "Rendering page")}
                   </div>
                 )}
               </div>
@@ -1013,49 +1598,109 @@ function App() {
                 <span
                   className={`mode-dot ${tool === "read" ? "neutral" : ""}`}
                 />
-                {selectedHint}
+                {tr(selectedHint)}
               </div>
             </section>
             <aside className="inspector">
               <div className="inspector-tabs">
-                {(["tools", "comments", "forms"] as const).map((t) => (
-                  <button
-                    key={t}
-                    className={tab === t ? "selected" : ""}
-                    onClick={() => setTab(t)}
-                  >
-                    {t[0].toUpperCase() + t.slice(1)}
-                  </button>
-                ))}
+                {(["tools", "markup", "comments", "forms"] as const).map(
+                  (t) => (
+                    <button
+                      key={t}
+                      className={tab === t ? "selected" : ""}
+                      onClick={() => setTab(t)}
+                      aria-pressed={tab === t}
+                    >
+                      {tr(t[0].toUpperCase() + t.slice(1))}
+                    </button>
+                  ),
+                )}
               </div>
               <div className="inspector-body">
-                {tab === "tools" ? (
+                {inline ? (
+                  <div ref={setEditorHost} />
+                ) : tab === "tools" ? (
                   <>
                     <div className="section-label">
-                      {tools.find((t) => t.id === tool)?.label}
+                      {tr(tools.find((t) => t.id === tool)?.label || "")}
                     </div>
                     <h2>
-                      {tool === "read"
-                        ? "Your document, in focus."
-                        : tool === "edit"
-                          ? "Make it say what you mean."
-                          : "A personal touch."}
+                      {tr(
+                        tool === "read"
+                          ? "Document tools"
+                          : tool === "edit"
+                            ? "Edit text"
+                            : tool === "select"
+                              ? "Object properties"
+                              : "Tool settings",
+                      )}
                     </h2>
-                    <p className="inspector-copy">{selectedHint}</p>
+                    <p className="inspector-copy">{tr(selectedHint)}</p>
+                    <button
+                      className="button subtle paste-page-button"
+                      disabled={!ready || !doc.editable}
+                      onClick={() => void pasteClipboard()}
+                    >
+                      <ClipboardText size={16} />
+                      {tr("Paste onto page")}
+                    </button>
+                    {selected && tool === "select" && (
+                      <ObjectControls
+                        key={`${selected.id}-${revision}`}
+                        object={selected}
+                        pageWidth={view!.width}
+                        pageHeight={view!.height}
+                        disabled={!ready}
+                        onCopy={() => void copySelected()}
+                        onRotate={(degrees) =>
+                          void edit({
+                            kind: "objectRotate",
+                            page,
+                            id: selected.id,
+                            degrees,
+                          })
+                        }
+                        onTransform={(rect) =>
+                          void edit({
+                            kind: "objectTransform",
+                            page,
+                            id: selected.id,
+                            rect,
+                          })
+                        }
+                        onEdit={() => editObject(selected)}
+                        onDelete={() =>
+                          void edit({
+                            kind: "objectDelete",
+                            page,
+                            id: selected.id,
+                          })
+                        }
+                      />
+                    )}
+                    {tool === "select" && !selected && (
+                      <div className="notice">
+                        <p>
+                          {tr(
+                            "Choose an object on the page. Folio 0.1 text and images are recovered when possible. Other flattened PDF contents are edited with Edit text.",
+                          )}
+                        </p>
+                      </div>
+                    )}
                     {["text", "ink", "rectangle"].includes(tool) && (
                       <div className="properties">
                         <label>
-                          Color
+                          {tr("Color")}
                           <input
                             type="color"
                             value={color}
                             onChange={(e) => setColor(e.target.value)}
-                            aria-label="Text and drawing color"
+                            aria-label={tr("Text and drawing color")}
                           />
                         </label>
                         {tool === "text" && (
                           <label>
-                            Text size{" "}
+                            {tr("Text size")}{" "}
                             <span>
                               <input
                                 type="number"
@@ -1071,7 +1716,7 @@ function App() {
                                   )
                                 }
                               />{" "}
-                              pt
+                              {tr("pt")}
                             </span>
                           </label>
                         )}
@@ -1081,28 +1726,28 @@ function App() {
                       <div className="notice">
                         <PencilSimple size={16} />
                         <p>
-                          Edits replace the original text. Fonts are retained
-                          when their glyphs are available; otherwise Folio uses
-                          a substitute. Text fits within its original line.
+                          {tr(
+                            "Edits preserve the original font where available. Preview substitutions and choose whether longer text should shrink.",
+                          )}
                         </p>
                       </div>
                     )}
                     <div className="inspector-section">
-                      <div className="section-label">Current page</div>
+                      <div className="section-label">{tr("Current page")}</div>
                       <div className="page-tools">
                         <button
                           onClick={() => edit({ kind: "rotate", page })}
                           disabled={!!busy || !doc.editable}
                         >
                           <ArrowClockwise size={19} />
-                          <span>Rotate</span>
+                          <span>{tr("Rotate")}</span>
                         </button>
                         <button
                           onClick={() => edit({ kind: "duplicate", page })}
                           disabled={!!busy || !doc.editable}
                         >
                           <Copy size={19} />
-                          <span>Duplicate</span>
+                          <span>{tr("Duplicate")}</span>
                         </button>
                         <button
                           onClick={() =>
@@ -1113,7 +1758,7 @@ function App() {
                           disabled={page === 0 || !!busy || !doc.editable}
                         >
                           <ArrowUp size={19} />
-                          <span>Move up</span>
+                          <span>{tr("Move up")}</span>
                         </button>
                         <button
                           onClick={() =>
@@ -1131,7 +1776,7 @@ function App() {
                           }
                         >
                           <ArrowDown size={19} />
-                          <span>Move down</span>
+                          <span>{tr("Move down")}</span>
                         </button>
                       </div>
                       <button
@@ -1142,11 +1787,13 @@ function App() {
                         }
                       >
                         <Trash size={15} />
-                        Delete page
+                        {tr("Delete page")}
                       </button>
                     </div>
                     <div className="inspector-section">
-                      <div className="section-label">Find in document</div>
+                      <div className="section-label">
+                        {tr("Find in document")}
+                      </div>
                       <form
                         className="search-input"
                         onSubmit={(e) => {
@@ -1157,22 +1804,22 @@ function App() {
                         <MagnifyingGlass size={16} />
                         <input
                           ref={search}
-                          placeholder="Search text…"
-                          aria-label="Search document"
+                          placeholder={tr("Search text…")}
+                          aria-label={tr("Search document")}
                           value={query}
                           onChange={(e) => setQuery(e.target.value)}
                         />
-                        <button title="Find" disabled={!!busy || !query}>
+                        <button title={tr("Find")} disabled={!!busy || !query}>
                           <ArrowRight size={16} />
                         </button>
                       </form>
                       {hits.length > 0 && (
                         <div className="search-results">
                           <span>
-                            {hit + 1} of {hits.length} matches
+                            {`${hit + 1} ${tr("of")} ${hits.length} ${tr("matches")}`}
                           </span>
                           <IconButton
-                            title="Previous match"
+                            title={tr("Previous match")}
                             onClick={() => {
                               const i = (hit - 1 + hits.length) % hits.length;
                               setHit(i);
@@ -1182,7 +1829,7 @@ function App() {
                             <ArrowUp size={14} />
                           </IconButton>
                           <IconButton
-                            title="Next match"
+                            title={tr("Next match")}
                             onClick={() => {
                               const i = (hit + 1) % hits.length;
                               setHit(i);
@@ -1195,53 +1842,23 @@ function App() {
                       )}
                     </div>
                   </>
-                ) : tab === "comments" ? (
-                  <>
-                    <div className="section-label">This page</div>
-                    <h2>Notes & marks</h2>
-                    {view?.annotations.length ? (
-                      view.annotations.map((a) => (
-                        <div className="annotation-item" key={a.index}>
-                          <div>
-                            <span className="annotation-type">{a.type}</span>
-                            <p>{a.contents || "Page annotation"}</p>
-                          </div>
-                          <IconButton
-                            title={`Remove annotation ${a.index + 1}`}
-                            disabled={!!busy}
-                            onClick={() =>
-                              edit({
-                                kind: "removeAnnotation",
-                                page,
-                                index: a.index,
-                              })
-                            }
-                          >
-                            <Trash size={15} />
-                          </IconButton>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="empty-panel">
-                        <Note size={28} />
-                        <p>No annotations yet.</p>
-                        <span>
-                          Comments, highlights and drawings on this page appear
-                          here.
-                        </span>
-                        <button
-                          className="button subtle"
-                          onClick={() => setTool("note")}
-                        >
-                          Add a comment
-                        </button>
-                      </div>
-                    )}
-                  </>
+                ) : tab === "comments" || tab === "markup" ? (
+                  <AnnotationPanel
+                    mode={tab}
+                    annotations={view?.annotations || []}
+                    busy={!!busy}
+                    editable={doc.editable}
+                    onRemove={(index) =>
+                      void edit({ kind: "removeAnnotation", page, index })
+                    }
+                    onComment={() => chooseTool("note")}
+                  />
                 ) : (
                   <>
-                    <div className="section-label">Interactive PDF fields</div>
-                    <h2>Fill it in.</h2>
+                    <div className="section-label">
+                      {tr("Interactive PDF fields")}
+                    </div>
+                    <h2>{tr("Form fields")}</h2>
                     {view?.widgets.length ? (
                       view.widgets.map((w) => (
                         <div
@@ -1264,8 +1881,8 @@ function App() {
                                 })
                               }
                             >
-                              {w.value !== "Off" && <Check size={16} />}Toggle{" "}
-                              {w.type}
+                              {w.value !== "Off" && <Check size={16} />}
+                              {tr("Toggle")} {w.type}
                             </button>
                           ) : ["text", "combobox", "listbox"].includes(
                               w.type.toLowerCase(),
@@ -1306,12 +1923,13 @@ function App() {
                                 className="button subtle"
                                 disabled={w.readonly || !!busy}
                               >
-                                Apply
+                                {tr("Apply")}
                               </button>
                             </form>
                           ) : (
                             <p className="inspector-copy">
-                              {w.type} fields are view only.
+                              {w.type}
+                              {tr("fields are view only.")}
                             </p>
                           )}
                         </div>
@@ -1319,9 +1937,11 @@ function App() {
                     ) : (
                       <div className="empty-panel">
                         <TextT size={28} />
-                        <p>No fillable fields.</p>
+                        <p>{tr("No fillable fields.")}</p>
                         <span>
-                          You can still use Add text to type onto the page.
+                          {tr(
+                            "You can still use Add text to type onto the page.",
+                          )}
                         </span>
                         <button
                           className="button subtle"
@@ -1330,7 +1950,7 @@ function App() {
                             setTab("tools");
                           }}
                         >
-                          Add text
+                          {tr("Add text")}
                         </button>
                       </div>
                     )}
@@ -1338,26 +1958,35 @@ function App() {
                 )}
               </div>
               <div className="inspector-footer">
-                <LockSimple size={15} />
-                <span>
-                  Private by design.
-                  <br />
-                  Your files stay on this device.
-                </span>
+                {inline ? (
+                  <div
+                    className="inline-footer-host"
+                    ref={setEditorActionsHost}
+                  />
+                ) : (
+                  <>
+                    <LockSimple size={15} />
+                    <span>
+                      {tr("Private by design.")}
+                      <br />
+                      {tr("Your files stay on this device.")}
+                    </span>
+                  </>
+                )}
               </div>
             </aside>
           </main>
           <footer className="statusbar">
             <span>
-              {dirty ? (
+              {dirty || draftDirty ? (
                 <>
                   <span className="mode-dot" />
-                  Unsaved changes
+                  {tr("Unsaved changes")}
                 </>
               ) : (
                 <>
                   <CheckCircle size={13} />
-                  No unsaved edits
+                  {tr("No unsaved edits")}
                 </>
               )}
             </span>
@@ -1365,29 +1994,26 @@ function App() {
               {info &&
                 `${Math.round(info.width)} × ${Math.round(info.height)} pt`}
               <span className="status-divider" />
-              PDF document
+              {tr("PDF document")}
             </span>
             <span>
-              <Keyboard size={14} />V Read · E Edit · T Add text
+              <Keyboard size={14} />
+              {tr("V Read · M Move · E Edit · T Add text")}
             </span>
           </footer>
         </>
       ) : (
         <main className="home">
-          <div className="home-intro">
+          <section className="home-intro">
             <div className="eyebrow">
               <span />
-              YOUR EVERYDAY PDF WORKSPACE
+              {tr("Local document workspace")}
             </div>
-            <h1>
-              Good documents.
-              <br />
-              Great possibilities.
-            </h1>
+            <h1>{tr("Your PDF workspace.")}</h1>
             <p>
-              Read, edit, and bring your PDFs together.
-              <br />
-              All in one place. All on your device.
+              {tr(
+                "Read, edit and annotate your documents. Open a PDF to get started.",
+              )}
             </p>
             <div className="home-buttons">
               <button
@@ -1395,17 +2021,17 @@ function App() {
                 onClick={chooseOpen}
                 disabled={!!busy}
               >
-                <FolderOpen size={20} />
-                Open a PDF
-                <ArrowRight size={18} />
+                <FolderOpen size={19} />
+                {tr("Open a PDF")}
+                <ArrowRight size={17} />
               </button>
               <button
                 className="button subtle large"
                 onClick={() => newDocument()}
                 disabled={!!busy}
               >
-                <FilePlus size={19} />
-                Create blank PDF
+                <FilePlus size={18} />
+                {tr("Create blank PDF")}
               </button>
             </div>
             <button
@@ -1413,59 +2039,58 @@ function App() {
               onClick={() => newDocument(true)}
               disabled={!!busy}
             >
-              Explore with a sample document
-              <ArrowSquareOut size={15} />
+              {tr("Explore with a sample document")}
+              <ArrowRight size={15} />
             </button>
             <div className="home-footnote">
               <LockSimple size={14} />
-              No uploads. No account. Just your documents.
+              {tr("No uploads. No account. Just your documents.")}
             </div>
-          </div>
-          <div className="home-guide">
+          </section>
+          <section className="home-guide" aria-label={tr("Workspace guide")}>
             <div className="guide-top">
-              <div className="guide-mark">
-                <FilePdf size={30} />
-              </div>
-              <span>MADE FOR THE EVERYDAY</span>
+              <span>{tr("A focused workflow")}</span>
+              <FilePdf size={21} />
             </div>
-            <h2>
-              A fresh perspective
-              <br />
-              on your paperwork.
-            </h2>
+            <h2>{tr("Everything in its place.")}</h2>
             <div className="guide-row">
-              <PencilSimple size={22} />
+              <span className="guide-step">01</span>
               <div>
-                <strong>Make the words work</strong>
-                <p>Edit existing text or add something new.</p>
+                <strong>{tr("Read & edit")}</strong>
+                <p>{tr("Find text and make changes directly on the page.")}</p>
               </div>
+              <PencilSimple size={18} />
             </div>
             <div className="guide-row">
-              <Highlighter size={22} />
+              <span className="guide-step">02</span>
               <div>
-                <strong>Think on the page</strong>
-                <p>Highlight, draw, comment, and fill forms.</p>
+                <strong>{tr("Highlight & draw")}</strong>
+                <p>{tr("Mark passages without creating written comments.")}</p>
               </div>
+              <Highlighter size={18} />
             </div>
             <div className="guide-row">
-              <Stack size={22} />
+              <span className="guide-step">03</span>
               <div>
-                <strong>Get your pages in order</strong>
-                <p>Reorder, rotate, merge, and save a copy.</p>
+                <strong>{tr("Add a comment")}</strong>
+                <p>{tr("Write a note only when you choose Comment.")}</p>
               </div>
+              <Note size={18} />
             </div>
             <div className="guide-bottom">
-              <span>PDFs, with a little less friction.</span>
-              <span>F.</span>
+              <Stack size={16} />
+              <span>
+                {tr("Organize pages. Export a copy. Keep the original.")}
+              </span>
             </div>
-          </div>
+          </section>
         </main>
       )}
       {error && (
         <div className="error-banner" role="alert">
           <WarningCircle size={19} />
-          <span>{error}</span>
-          <IconButton title="Dismiss error" onClick={() => setError("")}>
+          <span>{tr(error)}</span>
+          <IconButton title={tr("Dismiss error")} onClick={() => setError("")}>
             <X size={16} />
           </IconButton>
         </div>
@@ -1473,40 +2098,53 @@ function App() {
       {toast && (
         <div className="toast" role="status">
           <CheckCircle size={18} />
-          {toast}
+          {tr(toast)}
         </div>
       )}
       {!doc && busy && (
         <div className="home-busy">
           <SpinnerGap className="spin" size={18} />
-          {busy}…
+          {tr(busy)}…
         </div>
       )}
-      {modal && (
+      {exporting && doc && (
+        <ExportDialog
+          page={page}
+          count={doc.pages.length}
+          busy={!!busy}
+          onClose={() => setExporting(false)}
+          onExport={(options) => void exportFile(options)}
+        />
+      )}
+      {modal && !inline && (
         <div className="modal-backdrop">
           <form
             className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dialog-title"
             onSubmit={(e) => {
               e.preventDefault();
               void submitModal();
             }}
           >
             <div className="modal-title">
-              <h2>
-                {
+              <h2 id="dialog-title">
+                {tr(
                   (
                     {
                       text: "Add text",
                       replace: "Edit text line",
+                      object: "Edit added text",
                       note: "Add a comment",
                       password: "Unlock PDF",
                       discard: "Discard unsaved changes?",
                     } as const
-                  )[modal.kind]
-                }
+                  )[modal.kind],
+                )}
               </h2>
               <IconButton
-                title="Cancel"
+                title={tr("Cancel")}
                 onClick={() => {
                   modal.resolve?.(false);
                   setModal(null);
@@ -1518,45 +2156,56 @@ function App() {
             </div>
             {modal.kind === "discard" ? (
               <p>
-                Your edits haven’t been saved. Save a copy first to keep them.
+                {tr(
+                  "Your edits haven’t been saved. Save a copy first to keep them.",
+                )}
               </p>
             ) : modal.kind === "password" ? (
               <>
-                <p>Enter this document’s password to open it.</p>
+                <p>{tr("Enter this document’s password to open it.")}</p>
                 <input
                   autoFocus
                   type="password"
-                  aria-label="PDF password"
+                  aria-label={tr("PDF password")}
                   value={modal.text}
-                  onChange={(e) => setModal({ ...modal, text: e.target.value })}
+                  onChange={(e) => {
+                    setFontBlocked(true);
+                    setModal({ ...modal, text: e.target.value });
+                  }}
                 />
               </>
             ) : (
               <>
                 <p>
-                  {modal.kind === "replace"
-                    ? "Replace this line of text. Longer replacements shrink to fit; the rest of the page stays in place."
-                    : modal.kind === "text"
-                      ? "Your text will appear at the point you selected."
-                      : "This comment stays with the PDF as an annotation."}
+                  {tr(
+                    modal.kind === "replace"
+                      ? "Replace this line while preserving its font, size, and baseline. Enable fitting only if you want longer text to shrink."
+                      : modal.kind === "object"
+                        ? "Edit this text object. You can change its content, font, size, and color."
+                        : modal.kind === "text"
+                          ? "Your text will appear at the point you selected."
+                          : "This comment stays with the PDF as an annotation.",
+                  )}
                 </p>
                 <textarea
                   autoFocus
-                  aria-label={
-                    modal.kind === "replace"
+                  aria-label={tr(
+                    modal.kind === "replace" || modal.kind === "object"
                       ? "Replacement text"
-                      : "Text content"
-                  }
+                      : "Text content",
+                  )}
                   rows={modal.kind === "replace" ? 3 : 5}
                   value={modal.text}
-                  onChange={(e) => setModal({ ...modal, text: e.target.value })}
+                  onChange={(e) => {
+                    setFontBlocked(true);
+                    setModal({ ...modal, text: e.target.value });
+                  }}
                 />
-                {modal.kind === "replace" && (
-                  <span className="modal-meta">
-                    Original font: {modal.line!.font} ·{" "}
-                    {Math.round(modal.line!.size)} pt
-                  </span>
-                )}
+                <p className="input-hint">
+                  {tr(
+                    "Type in any supported language using your system keyboard. Interface language does not translate PDF contents.",
+                  )}
+                </p>
               </>
             )}
             <div className="modal-actions">
@@ -1568,7 +2217,7 @@ function App() {
                   setModal(null);
                 }}
               >
-                Cancel
+                {tr("Cancel")}
               </button>
               {modal.kind === "discard" ? (
                 <button
@@ -1579,15 +2228,22 @@ function App() {
                     setModal(null);
                   }}
                 >
-                  Discard changes
+                  {tr("Discard changes")}
                 </button>
               ) : (
                 <button
                   className="button primary"
                   type="submit"
-                  disabled={modal.kind !== "replace" && !modal.text.trim()}
+                  disabled={
+                    !!busy ||
+                    (["text", "object", "replace"].includes(modal.kind) &&
+                      fontBlocked) ||
+                    (modal.kind !== "replace" &&
+                      modal.kind !== "object" &&
+                      !modal.text.trim())
+                  }
                 >
-                  {modal.kind === "password" ? "Unlock" : "Apply change"}
+                  {tr(modal.kind === "password" ? "Unlock" : "Apply change")}
                   <Check size={16} />
                 </button>
               )}
