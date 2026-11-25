@@ -90,7 +90,7 @@ try {
     assert.ok(groups.length > 0);
     const icon256 = groups
       .flatMap((group) => group.getIconItemsFromEntries(resources.entries))
-      .find((item) => item.width === 256);
+      .find((item) => (item.width || 256) === 256);
     assert.ok(
       icon256?.isRaw(),
       `Missing high-resolution icon in ${path.basename(name)}`,
