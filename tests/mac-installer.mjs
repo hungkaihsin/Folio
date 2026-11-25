@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
+import { upgradeProfile } from "./upgrade-profile.mjs";
 if (process.platform !== "darwin")
   throw new Error("The DMG installation test requires macOS.");
 const exec = promisify(execFile),
@@ -16,7 +17,9 @@ const image = path.resolve(
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "folio-dmg-")),
   mount = path.join(tmp, "volume"),
   installed = path.join(tmp, "Applications/Pageline.app");
-let attached = false;
+let attached = false,
+  previousAttached = false;
+const previousMount = path.join(tmp, "previous-volume");
 const run = async (file, args) => {
   const result = await exec(file, args, {
     timeout: 180000,
@@ -43,6 +46,17 @@ try {
   );
   const app = path.join(mount, "Pageline.app"),
     plist = path.join(app, "Contents/Info.plist");
+  const expectedIcon = await fs.readFile("build/icon.icns");
+  assert.deepEqual(
+    await fs.readFile(path.join(app, "Contents/Resources/icon.icns")),
+    expectedIcon,
+  );
+  assert.deepEqual(
+    await fs.readFile(
+      path.join(mount, "Pageline Installer.app/Contents/Resources/icon.icns"),
+    ),
+    expectedIcon,
+  );
   const actual = await exec("/usr/libexec/PlistBuddy", [
     "-c",
     "Print :CFBundleShortVersionString",
@@ -82,6 +96,28 @@ try {
     );
   };
   await fakeApp(legacy, "0.7.0");
+  if (process.env.PAGELINE_PREVIOUS_INSTALLER) {
+    await fs.mkdir(previousMount);
+    await run("/usr/bin/hdiutil", [
+      "attach",
+      "-readonly",
+      "-nobrowse",
+      "-mountpoint",
+      previousMount,
+      process.env.PAGELINE_PREVIOUS_INSTALLER,
+    ]);
+    previousAttached = true;
+    await run("/usr/bin/ditto", [
+      path.join(previousMount, "Pageline.app"),
+      installed,
+    ]);
+    await upgradeProfile(
+      path.join(installed, "Contents/MacOS/Pageline"),
+      tmp,
+      true,
+      "0.8.0",
+    );
+  }
   const desktop = path.join(tmp, "Desktop");
   const result = JSON.parse(
     await run(helper, [
@@ -150,6 +186,12 @@ try {
   assert.equal(await hash(app), await hash(installed));
   await fs.access(path.join(installed, "Contents/Resources/icon.icns"));
   const binary = path.join(installed, "Contents/MacOS/Pageline");
+  if (process.env.PAGELINE_PREVIOUS_INSTALLER) {
+    await upgradeProfile(binary, tmp, false, version);
+    console.log(
+      "Published 0.8.0 -> current Mac installer upgrade passed; Chinese language preference preserved.",
+    );
+  }
   await run(process.execPath, ["tests/desktop.mjs", binary]);
   await run(process.execPath, ["tests/clipboard-desktop.mjs", binary]);
   await run(process.execPath, ["tests/print-updates-desktop.mjs", binary]);
@@ -157,6 +199,8 @@ try {
     "DMG and native upgrade/shortcut helper verified; universal binary and Applications link checked; copied-app editing/clipboard/rotation workflows passed.",
   );
 } finally {
+  if (previousAttached)
+    await run("/usr/bin/hdiutil", ["detach", previousMount]);
   if (attached) await run("/usr/bin/hdiutil", ["detach", mount]);
   await fs.rm(tmp, { recursive: true, force: true });
 }

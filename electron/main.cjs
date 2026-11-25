@@ -220,6 +220,8 @@ ipcMain.on("document:dirty", (event, value) => {
   win.setDocumentEdited(dirty);
 });
 app.whenReady().then(() => {
+  if (process.platform === "darwin")
+    app.dock.setIcon(path.join(__dirname, "assets/icon.png"));
   protocol.handle("folio", async (request) => {
     try {
       const url = new URL(request.url);
@@ -270,6 +272,7 @@ app.whenReady().then(() => {
       minHeight: 680,
       backgroundColor: "#e8e9ec",
       title: "Pageline",
+      icon: path.join(__dirname, "assets/icon.png"),
       webPreferences: {
         preload: path.join(__dirname, "preload.cjs"),
         sandbox: true,

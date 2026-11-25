@@ -32,6 +32,8 @@ jobs:
       - run: ${{ matrix.command }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Fetch checksum-verified 0.8.0 upgrade baseline
+        run: node scripts/fetch-upgrade-baseline.mjs
       - if: runner.os == 'macOS'
         run: npm run test:installer:mac
       - if: runner.os == 'Windows'
@@ -40,9 +42,12 @@ jobs:
         run: npm run test:installer:win
         env:
           FOLIO_INSTALLER_TEST: '1'
+      - name: Record checksums of the tested installer bytes
+        run: node scripts/release-checksums.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
             release/**/*.dmg
             release/**/*-Setup.exe
+            release/**/*-SHA256SUMS-*.txt

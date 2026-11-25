@@ -71,11 +71,54 @@ test("update UI exposes an installer download and handles failed opening", async
     };
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Pageline version 0.8.0" }).click();
+  await page.getByRole("button", { name: "Check for updates" }).click();
   await expect(page.getByRole("dialog")).toContainText("0.9.0");
   await page.getByRole("button", { name: "Download installer" }).click();
   await expect(page.getByRole("alert")).toHaveText(
     "Could not open the download page.",
   );
   await page.getByRole("button", { name: "Close updates" }).click();
+});
+
+test("Updates is visibly labeled on the compact home and document workspace in both languages", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 680 });
+  await page.goto("/");
+  const updates = page.getByRole("button", {
+    name: "Check for updates",
+    exact: true,
+  });
+  await expect(updates).toBeInViewport();
+  await expect(updates).toContainText("Updates");
+  await updates.click();
+  await expect(
+    page.getByRole("dialog", { name: "Pageline updates" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close updates" }).click();
+  await page
+    .getByRole("button", { name: "Explore with a sample document" })
+    .click();
+  await page.locator(".text-layer").waitFor();
+  await expect(updates).toBeInViewport();
+  await expect(
+    page.getByRole("button", { name: "Save copy", exact: true }),
+  ).toBeInViewport();
+  await page.getByLabel("Language / 語言").selectOption("zh-TW");
+  const translated = page.getByRole("button", {
+    name: "檢查更新",
+    exact: true,
+  });
+  await expect(translated).toContainText("更新");
+  await expect(translated).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "work/pageline-081-workspace.png" });
+  await translated.click();
+  await expect(
+    page.getByRole("dialog", { name: "Pageline 更新" }),
+  ).toBeVisible();
 });

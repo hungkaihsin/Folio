@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { getPath7za } from "app-builder-lib/out/toolsets/7zip.js";
 import { NtExecutable, NtExecutableResource } from "pe-library";
-import { Resource } from "resedit";
+import { Resource, Data } from "resedit";
 import {
   extractFile as extractArchiveFile,
   listPackage as listArchiveFiles,
@@ -40,6 +40,11 @@ const exec = promisify(execFile);
 const run = (args) =>
   exec(bin, args, { timeout: 180000, maxBuffer: 4 * 1024 * 1024 });
 try {
+  const sourceIcon = Data.IconFile.from(await fs.readFile("build/icon.ico"));
+  const source256 = sourceIcon.icons.find(
+    (item) => item.data.width === 256,
+  ).data;
+  assert.ok(source256.isRaw());
   await run(["t", setup]);
   await run(["x", setup, `-o${tmp}`, "-y"]);
   const extracted = await fs.readdir(tmp, { recursive: true });
@@ -81,8 +86,19 @@ try {
     const [major, minor, patch] = version.split(".").map(Number);
     assert.equal(info.fixedInfo.fileVersionMS, (major << 16) | minor);
     assert.equal(info.fixedInfo.fileVersionLS, patch << 16);
+    const groups = Resource.IconGroupEntry.fromEntries(resources.entries);
+    assert.ok(groups.length > 0);
+    const icon256 = groups
+      .flatMap((group) => group.getIconItemsFromEntries(resources.entries))
+      .find((item) => item.width === 256);
     assert.ok(
-      Resource.IconGroupEntry.fromEntries(resources.entries).length > 0,
+      icon256?.isRaw(),
+      `Missing high-resolution icon in ${path.basename(name)}`,
+    );
+    assert.deepEqual(
+      Buffer.from(icon256.bin),
+      Buffer.from(source256.bin),
+      `Icon differs from Pageline artwork in ${path.basename(name)}`,
     );
   }
   const executable = await fs.readFile(path.join(tmp, "payload/Pageline.exe"));

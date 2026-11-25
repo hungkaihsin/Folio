@@ -1,6 +1,6 @@
 {
   "name": "folio-pdf-editor",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "A local PDF workspace for reading, editing and organizing documents",
   "main": "electron/main.cjs",
   "scripts": {
@@ -13,7 +13,7 @@
     "package:win": "npm run build && electron-builder --win nsis --x64",
     "package:win:portable": "npm run build && electron-builder --win portable --x64",
     "test:desktop": "node tests/desktop.mjs",
-    "test:package": "node tests/desktop.mjs release/v0.8.0/mac-universal/Pageline.app/Contents/MacOS/Pageline && node tests/clipboard-desktop.mjs release/v0.8.0/mac-universal/Pageline.app/Contents/MacOS/Pageline",
+    "test:package": "node tests/desktop.mjs release/v0.8.1/mac-universal/Pageline.app/Contents/MacOS/Pageline && node tests/clipboard-desktop.mjs release/v0.8.1/mac-universal/Pageline.app/Contents/MacOS/Pageline",
     "package:win:zip": "npm run build && electron-builder --win dir --x64",
     "format": "prettier --write src electron tests *.ts *.json index.html",
     "package:mac:app": "npm run build && electron-builder --mac dir --arm64",
@@ -21,7 +21,8 @@
     "test:installer:win": "node tests/windows-installer.mjs",
     "test:installer:mac": "node tests/mac-installer.mjs",
     "postinstall": "install-electron",
-    "test:print-desktop": "node tests/print-updates-desktop.mjs"
+    "test:print-desktop": "node tests/print-updates-desktop.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "keywords": [],
   "author": "Daniel Hung",
@@ -49,7 +50,7 @@
     "appId": "com.danielhung.folio",
     "productName": "Pageline",
     "directories": {
-      "output": "release/v0.8.0"
+      "output": "release/v0.8.1"
     },
     "files": [
       "dist/**/*",
@@ -109,7 +110,7 @@
           "x": 150,
           "y": 150,
           "type": "file",
-          "path": "release/v0.8.0/mac-universal/Pageline.app"
+          "path": "release/v0.8.1/mac-universal/Pageline.app"
         },
         {
           "x": 450,

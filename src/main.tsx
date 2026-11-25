@@ -53,6 +53,7 @@ import type {
   ExportOptions,
 } from "./types";
 import "./style.css";
+import pagelineMark from "./assets/pageline-mark.svg";
 import { TextSelectionLayer } from "./TextSelectionLayer";
 import { ObjectLayer, ObjectControls } from "./ObjectLayer";
 import {
@@ -1234,18 +1235,20 @@ function App() {
       <header className="topbar">
         <div className="wordmark">
           <div className="brand-icon">
-            <Stack size={22} weight="bold" />
+            <img src={pagelineMark} alt="" />
           </div>
           {tr("pageline")}
           <button
             type="button"
             className="app-version"
-            aria-label={`Pageline version ${packageInfo.version}`}
-            title={tr("Check for updates")}
+            aria-label={tr("Check for updates")}
+            title={`Pageline ${packageInfo.version} · ${tr("Check for updates")}`}
             disabled={!!modal || !!busy || printing}
             onClick={() => setUpdating(true)}
           >
-            {packageInfo.version}
+            <ArrowClockwise size={14} />
+            <span>{tr("Updates")}</span>
+            <span className="version-number">{packageInfo.version}</span>
           </button>
           <span className="brand-divider" />
         </div>

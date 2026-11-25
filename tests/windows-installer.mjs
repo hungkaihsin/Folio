@@ -5,6 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn, execFile } from "node:child_process";
 import assert from "node:assert/strict";
+import { upgradeProfile } from "./upgrade-profile.mjs";
 import { promisify } from "node:util";
 const exec = promisify(execFile);
 if (process.platform !== "win32")
@@ -42,6 +43,18 @@ const run = (file, args, timeout = 180000) =>
         : reject(new Error(`${path.basename(file)} exited ${code}`));
     });
   });
+async function assertFileRemoved(file) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try {
+      await fs.access(file);
+    } catch {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await assert.rejects(fs.access(file));
+}
 const desktop = (
   await exec("powershell.exe", [
     "-NoProfile",
@@ -92,6 +105,20 @@ try {
   await run(process.execPath, ["tests/clipboard-desktop.mjs", exe]);
   await run(process.execPath, ["tests/print-updates-desktop.mjs", exe]);
   console.log("Windows NSIS install and installed-app workflows passed.");
+  if (process.env.PAGELINE_PREVIOUS_INSTALLER) {
+    await run(path.join(target, "Uninstall Pageline.exe"), ["/S"]);
+    await assertFileRemoved(exe);
+    installed = false;
+    await run(process.env.PAGELINE_PREVIOUS_INSTALLER, ["/S", `/D=${target}`]);
+    installed = true;
+    await upgradeProfile(exe, root, true, "0.8.0");
+    await run(setup, ["/S"]);
+    await fs.access(exe);
+    await upgradeProfile(exe, root, false, version);
+    console.log(
+      "Published 0.8.0 -> current Windows installer upgrade passed; installation path and Chinese language preference preserved.",
+    );
+  }
 } finally {
   if (installed) {
     await run(path.join(target, "Uninstall Pageline.exe"), ["/S"]);

@@ -427,6 +427,7 @@ const zh: Record<string, string> = {
   "Print fewer pages in one job, or save a print PDF.":
     "請減少單次列印頁數，或儲存列印 PDF。",
   "Check for updates": "檢查更新",
+  Updates: "更新",
   "Pageline updates": "Pageline 更新",
   "Close updates": "關閉更新",
   "Installed version": "已安裝版本",

@@ -154,7 +154,7 @@ try {
     }
   });
   assert.equal(invalid, true);
-  await page.getByRole("button", { name: "Pageline version 0.8.0" }).click();
+  await page.getByRole("button", { name: "Check for updates" }).click();
   await expect(
     page.getByRole("dialog", { name: "Pageline updates" }),
   ).toBeVisible();

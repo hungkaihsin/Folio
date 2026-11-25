@@ -1,4 +1,4 @@
-# Pageline 0.8.0
+# Pageline 0.8.1
 
 A local PDF editor for macOS and Windows, built with Electron, React, TypeScript, and MuPDF WebAssembly. Documents stay local, with no accounts, uploads, remote fonts, or PDF JavaScript execution. The optional update check contacts GitHub for release metadata only.
 
@@ -20,6 +20,13 @@ npm start
 On macOS, double-click `Launch Pageline.command` after installing dependencies. On Windows, use `Launch Pageline.bat`. The source launchers need Node.js; packaged desktop apps do not.
 
 Use **Open PDF** for your own file or **Explore with a sample document** to try real editing immediately.
+
+## What changed in 0.8.1
+
+- Replaced the Folio F icon with a folded-page **P** mark across the application, installer, uninstaller, Dock/taskbar, desktop shortcut artwork, toolbar and browser favicon. The source design is shared by the SVG and the native PNG/ICNS/ICO assets. `npm run icons` regenerates them on macOS; normal builds use the committed assets.
+- The toolbar now has an explicitly labeled **Updates / 更新** button next to the version. **Help > Check for updates** remains available. Open it, download a newer installer, save work, quit the app and run the installer to update.
+- Installer verification checks the embedded artwork, fresh/reinstall/uninstall workflows and an upgrade from the checksum-verified published 0.8.0 installers, including retained language preferences. Private PDF regression fixtures stay local.
+- Release installers are taken from passing CI jobs and verified against the checksums those jobs recorded after installation tests, so the downloadable binaries are the tested binaries. Builds remain unsigned; Mac notarization and Intel execution remain unverified.
 
 ## What changed in 0.8.0
 
@@ -112,7 +119,7 @@ Saving creates a normal PDF and does not preserve validity of existing cryptogra
 npm run package:mac           # Universal macOS DMG (Apple Silicon + Intel)
 npm run package:mac:app       # Apple Silicon app folder for development
 npm run package:win           # Windows x64 NSIS Setup.exe installer
-npm run package:win:zip       # Windows x64 app folder in release/v0.8.0/win-unpacked/
+npm run package:win:zip       # Windows x64 app folder in release/v0.8.1/win-unpacked/
 ```
 
 The universal Mac installer contains both arm64 and x86_64. Native verification on this host covers Apple Silicon; Intel execution remains untested. Windows ARM64 is not included.
