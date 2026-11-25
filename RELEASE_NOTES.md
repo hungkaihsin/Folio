@@ -8,7 +8,7 @@ Pageline is the new name for Folio, paired with Cutline. This release adds print
 - **Windows x64:** `Pageline-0.8.0-Windows-x64-Setup.exe`. Save work and close Folio/Pageline, then run the setup wizard. It offers a desktop-shortcut checkbox and retains the existing installer identity for upgrades.
 - Verify the installers with `Pageline-0.8.0-SHA256SUMS.txt`. The published bytes match the locally verified packages.
 
-**Unsigned evaluation builds:** neither installer is code signed; the Mac app is not notarized. Windows installation/upgrade/runtime/uninstall and Intel Mac execution still need target-system verification. This is an early release, not a claim of full Adobe Acrobat parity.
+**Unsigned evaluation builds:** neither installer is code signed; the Mac app is not notarized. Intel Mac execution, legacy Folio-to-Pageline upgrades on Windows and the interactive Windows shortcut-checkbox UI still need verification. This is an early release, not a claim of full Adobe Acrobat parity. See the post-publication CI results below for Windows install/runtime coverage.
 
 ## Changes
 
@@ -30,3 +30,11 @@ Pageline is the new name for Folio, paired with Cutline. This release adds print
 The installers were built before publication; their bundled README/QA snapshot may describe the update feed as private or pending. This release page and the repository README give the current public distribution status. The app's update endpoint is unchanged and uses this repository's published releases.
 
 AGPL-3.0-or-later; MuPDF and bundled fonts retain their license notices. Corresponding source is available at this release's `v0.8.0` tag. Documents are processed locally; optional update checks contact GitHub for release metadata.
+
+## Post-publication verification
+
+[Mac and Windows CI passed](https://github.com/hungkaihsin/Folio/actions/runs/45631508365) on 2026-11-25. Each runner passed 49 engine/service tests and 20 UI tests; two engine and three UI tests requiring the private local PDF were skipped. The earlier local run included those private tests. Both runners passed native editing/export, clipboard/rotation and print/update-dialog checks. Mac completed the DMG/native-helper installation checks. Windows completed NSIS archive validation, silent fresh install, desktop-shortcut target validation, same-version reinstall, installed-app workflows and uninstall. The private regression PDF stayed local.
+
+CI built and executed its own installer artifacts from the same application code, with follow-up CI/test-tooling fixes. These are separate artifacts from the published installers. The published installers retained their verified bytes and passed full anonymous download/checksum verification; the published Mac DMG also passed local installed-app checks. The exact published Windows installer still has static/hash verification rather than a recorded Windows execution. Signing/notarization and physical-printer testing remain open.
+
+The public repository, tagged source, latest-release API, both complete installer downloads and checksum file were verified without authentication. The live updater selects the correct platform installer for an older version, reports current for 0.8.0, and the actual packaged Mac app reports current against the public feed.

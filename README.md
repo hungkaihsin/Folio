@@ -4,7 +4,7 @@ A local PDF editor for macOS and Windows, built with Electron, React, TypeScript
 
 ## Downloads and updates
 
-Download installers from [Pageline releases](https://github.com/hungkaihsin/Folio/releases/latest). Save work and close Folio/Pageline before installing. On Mac, open **Pageline Installer** inside the DMG for upgrades and the optional desktop shortcut; on Windows, run **Setup.exe**. Builds are unsigned and the Mac app is not notarized. Windows installation/runtime and Intel execution remain unverified; see the release notes for the exact checks completed.
+Download installers from [Pageline releases](https://github.com/hungkaihsin/Folio/releases/latest). Save work and close Folio/Pageline before installing. On Mac, open **Pageline Installer** inside the DMG for upgrades and the optional desktop shortcut; on Windows, run **Setup.exe**. Builds are unsigned and the Mac app is not notarized. Hosted Windows CI now passes install/reinstall, shortcut, app-workflow and uninstall checks on its CI-built installer. The published Windows installer has static/hash verification; Intel execution remains unverified. See the release notes for the exact artifact coverage.
 
 **Help > Check for updates** (or the version badge) checks for a newer published release and opens its installer download. Run the downloaded installer to finish updating. This does not silently install updates. Older Folio builds without the update checker can install Pageline directly.
 

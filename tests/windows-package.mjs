@@ -134,7 +134,7 @@ try {
     false,
   );
   console.log(
-    "Windows static checks passed: NSIS/archive integrity, payload SHA-256 equality, x64 app, version/icon resources, bundled print/update modules and license notices. Windows installation/runtime remain untested on this Mac.",
+    "Windows static checks passed: NSIS/archive integrity, payload SHA-256 equality, x64 app, version/icon resources, bundled print/update modules and license notices. Static validation alone does not establish target-OS installation/runtime success.",
   );
 } finally {
   await fs.rm(tmp, { recursive: true, force: true });
