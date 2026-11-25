@@ -9,7 +9,16 @@ import { createHash } from "node:crypto";
 import { getPath7za } from "app-builder-lib/out/toolsets/7zip.js";
 import { NtExecutable, NtExecutableResource } from "pe-library";
 import { Resource } from "resedit";
-import { extractFile, listPackage } from "@electron/asar";
+import {
+  extractFile as extractArchiveFile,
+  listPackage as listArchiveFiles,
+} from "@electron/asar";
+// ASAR lookup splits directories using the host separator. Normalize nested
+// lookup paths and use portable separators when inspecting the listing.
+const extractFile = (archive, name) =>
+  extractArchiveFile(archive, path.normalize(name));
+const listPackage = (archive) =>
+  listArchiveFiles(archive).map((name) => name.replaceAll("\\", "/"));
 const version = JSON.parse(await fs.readFile("package.json", "utf8")).version;
 const root = path.resolve(`release/v${version}`),
   setup = path.join(root, `Pageline-${version}-Windows-x64-Setup.exe`);
