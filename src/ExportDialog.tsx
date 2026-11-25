@@ -134,7 +134,7 @@ export function ExportDialog({
               format === "txt"
                 ? "Exports selectable text. Scanned image text needs OCR."
                 : format === "pdf"
-                  ? "PDF keeps text and graphics editable in Folio. Exporting all pages also saves your edits."
+                  ? "PDF keeps text and graphics editable in Pageline. Exporting all pages also saves your edits."
                   : "Multiple images are saved together in a ZIP file. Images include your edits and annotations.",
             )}
           </p>

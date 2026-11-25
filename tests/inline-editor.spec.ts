@@ -42,7 +42,7 @@ test("existing text edits in place, cancels without mutation, retains drafts and
   page,
 }) => {
   await open(page, fixture());
-  await expect(page.getByLabel("Folio version 0.7.0")).toBeVisible();
+  await expect(page.getByLabel("Pageline version 0.8.0")).toBeVisible();
   await page
     .locator(".selectable-line")
     .filter({ hasText: "Original phrase" })

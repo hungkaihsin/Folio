@@ -1867,3 +1867,88 @@ button.tool-note {
   min-width: 28px;
   text-align: right;
 }
+
+.app-version {
+  background: transparent;
+  cursor: pointer;
+}
+.print-modal {
+  width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+.print-body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 28px;
+  overflow: auto;
+  min-height: 0;
+  padding-right: 6px;
+}
+.print-settings {
+  padding-bottom: 8px;
+}
+.print-settings .export-field {
+  margin: 0 0 14px;
+}
+.print-preview {
+  min-width: 0;
+  padding: 0 10px 10px;
+  background: #f5f8fb;
+  border-radius: 8px;
+}
+.print-preview > p:first-child {
+  font-weight: 600;
+  color: #314d69;
+}
+.print-side {
+  margin-bottom: 16px;
+}
+.print-side > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #5b6d80;
+  font-size: 11px;
+}
+.print-sheet {
+  display: grid;
+  grid-template-columns: 1fr;
+  max-height: 220px;
+  width: auto;
+  margin: auto;
+  background: white;
+  border: 1px solid #ccd6e2;
+}
+.print-sheet.booklet-sheet {
+  grid-template-columns: 1fr 1fr;
+}
+.print-sheet > div {
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  color: #375b80;
+}
+.booklet-sheet > div + div {
+  border-left: 1px dashed #a9b9ca;
+}
+.print-sheet .blank-print-page {
+  color: #8492a2;
+  font-size: 14px;
+  background: #fafbfc;
+}
+.print-modal .modal-actions {
+  padding-top: 16px;
+  flex-shrink: 0;
+}
+.updates-modal {
+  max-width: 520px;
+}
+@media (max-width: 1060px) {
+  .wordmark {
+    gap: 10px;
+  }
+  .top-actions {
+    gap: 6px;
+  }
+}

@@ -32,6 +32,8 @@ self.onmessage = ({ data }) => {
           "textBackdrop",
           "loadFont",
           "copyObject",
+          "printDocument",
+          "printImages",
         ].includes(method)
       )
         throw new Error("Unknown operation.");

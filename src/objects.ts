@@ -221,7 +221,7 @@ export function transformManaged(
   rotation: number,
 ) {
   const found = entries(page).find((e) => e.data.id === id);
-  if (!found) throw new Error("Select a Folio text box or image first.");
+  if (!found) throw new Error("Select an added text box or image first.");
   const current = displayed(page, found.data),
     matrix = page.getTransform();
   const rect = m.Rect.transform(current.rect, delta);
@@ -254,7 +254,7 @@ export function rotateObject(
   if (![90, -90, 180].includes(degrees))
     throw new Error("Rotate by 90 or 180 degrees.");
   const found = entries(page).find((e) => e.data.id === id);
-  if (!found) throw new Error("Select a Folio text box or image first.");
+  if (!found) throw new Error("Select an added text box or image first.");
   const current = displayed(page, found.data),
     r = current.rect;
   const cx = (r[0] + r[2]) / 2,

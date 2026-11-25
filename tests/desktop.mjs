@@ -35,7 +35,7 @@ try {
     .getByRole("button", { name: "Explore with a sample document" })
     .click();
   await page
-    .getByText("Welcome to Folio.pdf", { exact: true })
+    .getByText("Welcome to Pageline.pdf", { exact: true })
     .waitFor({ timeout: 30000 });
   await page.locator(".text-layer").waitFor();
   const runtime = await app.evaluate(() => process.versions.electron);

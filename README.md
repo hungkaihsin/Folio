@@ -1,6 +1,12 @@
-# Folio 0.7.0
+# Pageline 0.8.0
 
-A local PDF editor for macOS and Windows, built with Electron, React, TypeScript, and MuPDF WebAssembly. No accounts, uploads, remote fonts, or PDF JavaScript execution.
+A local PDF editor for macOS and Windows, built with Electron, React, TypeScript, and MuPDF WebAssembly. Documents stay local, with no accounts, uploads, remote fonts, or PDF JavaScript execution. The optional update check contacts GitHub for release metadata only.
+
+## Downloads and updates
+
+Download installers from [Pageline releases](https://github.com/hungkaihsin/Folio/releases/latest). Save work and close Folio/Pageline before installing. On Mac, open **Pageline Installer** inside the DMG for upgrades and the optional desktop shortcut; on Windows, run **Setup.exe**. Builds are unsigned and the Mac app is not notarized. Windows installation/runtime and Intel execution remain unverified; see the release notes for the exact checks completed.
+
+**Help > Check for updates** (or the version badge) checks for a newer published release and opens its installer download. Run the downloaded installer to finish updating. This does not silently install updates. Older Folio builds without the update checker can install Pageline directly.
 
 ## Run
 
@@ -11,9 +17,20 @@ npm ci
 npm start
 ```
 
-On macOS, double-click `Launch Folio.command` after installing dependencies. On Windows, use `Launch Folio.bat`. The source launchers need Node.js; packaged desktop apps do not.
+On macOS, double-click `Launch Pageline.command` after installing dependencies. On Windows, use `Launch Pageline.bat`. The source launchers need Node.js; packaged desktop apps do not.
 
 Use **Open PDF** for your own file or **Explore with a sample document** to try real editing immediately.
+
+## What changed in 0.8.0
+
+- **Pageline** is the new name, paired with **Cutline**. The application ID, Windows installer identity, local preferences folder, language key and PDF object metadata retain their Folio identifiers for compatibility. Existing PDF objects remain editable.
+- **Print PDF** or **Cmd/Ctrl+P** opens page ranges, A4/A3/Letter paper, orientation, copies, margins, duplex and reverse-order controls. The desktop opens the system printer dialog. Check the actual printer's paper/duplex settings before printing.
+- **Booklet / saddle stitch (小冊子／騎馬釘)** arranges pages for folding and center stapling, with left/right binding, blank-page padding, a page-order preview and separate fronts/backs for manual duplex. Automatic duplex normally uses landscape with short-edge flipping. Manual paper reinsertion varies by printer: test one sheet first. This prepares the page layout; stapling requires a finisher or manual stapling.
+- **Save print PDF** exports the imposed sheets with original vector content and searchable text. Native printing rasterizes sheets at up to 300 dpi, capped at 18 megapixels per side and 160 MB per job; larger jobs should use Save print PDF and a PDF print tool. Print preparation bakes current annotation/form appearances on a clone and preserves the source and undo history.
+- **Check for updates** in Help or the version badge checks the latest stable GitHub release and opens the matching installer download. Save work, close the app and run that installer to upgrade. This is an installer-based update flow. The feed uses publicly accessible published releases with the correctly named installer assets. Draft/prerelease entries, inaccessible feeds and missing installers report unavailable. No credentials are embedded and the app does not silently replace itself.
+- **Windows desktop shortcut:** the installation wizard includes an optional shortcut checkbox. The installer retains the existing app identity and installation folder when upgrading Folio; it also supports re-running the new installer. Windows runtime/upgrade verification still requires a Windows runner.
+- **Mac desktop shortcut and upgrades:** open the DMG and run **Pageline Installer** to install into /Applications or ~/Applications, update an identified Folio/Pageline app there, and optionally create a desktop shortcut. Save and quit the installed app first. The ordinary drag-to-Applications option remains available; the helper handles the old Folio name and shortcut choice. It refuses downgrades and unrelated app/desktop items. Both the app and helper contain Intel and Apple Silicon binaries.
+- Builds remain unsigned; macOS notarization and Windows Authenticode signing are release setup work. These packages are development previews, not a signed public distribution.
 
 ## What changed in 0.7.0
 
@@ -95,7 +112,7 @@ Saving creates a normal PDF and does not preserve validity of existing cryptogra
 npm run package:mac           # Universal macOS DMG (Apple Silicon + Intel)
 npm run package:mac:app       # Apple Silicon app folder for development
 npm run package:win           # Windows x64 NSIS Setup.exe installer
-npm run package:win:zip       # Windows x64 app folder in release/v0.7.0/win-unpacked/
+npm run package:win:zip       # Windows x64 app folder in release/v0.8.0/win-unpacked/
 ```
 
 The universal Mac installer contains both arm64 and x86_64. Native verification on this host covers Apple Silicon; Intel execution remains untested. Windows ARM64 is not included.
@@ -113,6 +130,7 @@ npx playwright install chromium
 npm run test:ui
 npm run test:desktop           # requires an Electron runtime
 npm run test:clipboard         # restores the system clipboard after testing
+npm run test:print-desktop     # captures print output; sends no physical print job
 npm run test:package           # requires the packaged universal Mac app
 npm run test:installer:mac     # verifies/mounts DMG and tests a copied app
 npm audit
@@ -132,9 +150,9 @@ AGPL-3.0-or-later. MuPDF is dual licensed under AGPL/commercial terms. Closed-so
 
 ## Installer checks and open release items
 
-For Mac, open the DMG and drag Folio into Applications. For Windows, run the Setup.exe wizard. Neither packaged app requires Node.js or project dependencies. Save work and quit Folio before replacing an installed copy; removing the application does not remove your PDFs. An older app window continues running its old version until quit. Check the visible version badge.
+For Mac, open the DMG and run Pageline Installer for the upgrade and optional desktop shortcut, or drag Pageline into Applications for a basic install. For Windows, run the Setup.exe wizard and choose the desktop shortcut option. Neither packaged app requires Node.js or project dependencies. Save work and quit Folio/Pageline before replacing an installed copy; removing the application does not remove your PDFs. An older app window continues running its old version until quit. Check the visible version badge.
 
-`tests/mac-installer.mjs` verifies the DMG, mounts it read-only, checks its Applications link/universal executable and tests a copied app in a temporary Applications folder. It does not overwrite `/Applications/Folio.app`. `tests/windows-installer.mjs` runs only on a disposable Windows host with `FOLIO_INSTALLER_TEST=1`; it installs the real NSIS artifact, runs both native workflows, and uninstalls it.
+`tests/mac-installer.mjs` verifies the DMG, mounts it read-only, checks its Applications link/universal app and helper, tests legacy-name upgrade, shortcut on/off/reinstall/conflict and downgrade protection, then runs editing, clipboard and print checks on the installed copy. It uses temporary Applications/Desktop folders and leaves /Applications untouched. `tests/windows-installer.mjs` runs only on a disposable Windows host with `FOLIO_INSTALLER_TEST=1`; it installs the real NSIS artifact, checks the shortcut and reinstall, runs native workflows, and uninstalls it. Set `FOLIO_LEGACY_INSTALLER` to a previous Folio installer to test an old-name upgrade. `node tests/windows-package.mjs` performs static archive, payload, resource and license checks on any host, without establishing Windows runtime success.
 
 Packages are currently unsigned and the Mac app is not notarized. No valid Apple signing identity was present on the build host. The scripted Mac checks do not establish Gatekeeper acceptance of an internet-downloaded unsigned app. Windows install/runtime and Intel runtime require their target systems; cross-packaging does not establish success there.
 

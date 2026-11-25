@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("desktop", {
   platform: process.platform,
+  print: (job) => ipcRenderer.invoke("document:print", job),
+  checkUpdates: () => ipcRenderer.invoke("updates:check"),
+  downloadUpdate: () => ipcRenderer.invoke("updates:download"),
+  openReleases: () => ipcRenderer.invoke("updates:releases"),
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   nativeClipboard: (action) => ipcRenderer.invoke("clipboard:edit", action),
   writeClipboard: (content) => ipcRenderer.invoke("clipboard:write", content),

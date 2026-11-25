@@ -1,6 +1,6 @@
 {
   "name": "folio-pdf-editor",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A local PDF workspace for reading, editing and organizing documents",
   "main": "electron/main.cjs",
   "scripts": {
@@ -9,18 +9,19 @@
     "start": "npm run build && electron .",
     "test": "tsx --test tests/*.test.ts",
     "test:ui": "npm run build && playwright test",
-    "package:mac": "npm run build && electron-builder --mac dmg --universal",
+    "package:mac": "npm run build && node build/mac-installer.mjs && electron-builder --mac dmg --universal",
     "package:win": "npm run build && electron-builder --win nsis --x64",
     "package:win:portable": "npm run build && electron-builder --win portable --x64",
     "test:desktop": "node tests/desktop.mjs",
-    "test:package": "node tests/desktop.mjs release/v0.7.0/mac-universal/Folio.app/Contents/MacOS/Folio && node tests/clipboard-desktop.mjs release/v0.7.0/mac-universal/Folio.app/Contents/MacOS/Folio",
+    "test:package": "node tests/desktop.mjs release/v0.8.0/mac-universal/Pageline.app/Contents/MacOS/Pageline && node tests/clipboard-desktop.mjs release/v0.8.0/mac-universal/Pageline.app/Contents/MacOS/Pageline",
     "package:win:zip": "npm run build && electron-builder --win dir --x64",
     "format": "prettier --write src electron tests *.ts *.json index.html",
     "package:mac:app": "npm run build && electron-builder --mac dir --arm64",
     "test:clipboard": "node tests/clipboard-desktop.mjs",
     "test:installer:win": "node tests/windows-installer.mjs",
     "test:installer:mac": "node tests/mac-installer.mjs",
-    "postinstall": "install-electron"
+    "postinstall": "install-electron",
+    "test:print-desktop": "node tests/print-updates-desktop.mjs"
   },
   "keywords": [],
   "author": "Daniel Hung",
@@ -43,12 +44,12 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
   },
-  "productName": "Folio",
+  "productName": "Pageline",
   "build": {
     "appId": "com.danielhung.folio",
-    "productName": "Folio",
+    "productName": "Pageline",
     "directories": {
-      "output": "release/v0.7.0"
+      "output": "release/v0.8.0"
     },
     "files": [
       "dist/**/*",
@@ -79,24 +80,50 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Folio-${version}-Windows-${arch}-Setup.${ext}",
+      "artifactName": "Pageline-${version}-Windows-${arch}-Setup.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "createDesktopShortcut": false,
+      "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Folio",
-      "uninstallDisplayName": "Folio",
+      "shortcutName": "Pageline",
+      "uninstallDisplayName": "Pageline",
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
       "installerLanguages": [
         "en_US",
         "zh_TW"
-      ]
+      ],
+      "include": "build/installer.nsh"
     },
     "dmg": {
-      "artifactName": "Folio-${version}-macOS-Universal.${ext}",
-      "title": "Folio ${version}",
-      "iconSize": 96
+      "artifactName": "Pageline-${version}-macOS-Universal.${ext}",
+      "title": "Pageline ${version}",
+      "iconSize": 80,
+      "backgroundColor": "#f3f5f8",
+      "window": {
+        "width": 600,
+        "height": 440
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 150,
+          "type": "file",
+          "path": "release/v0.8.0/mac-universal/Pageline.app"
+        },
+        {
+          "x": 450,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 300,
+          "y": 330,
+          "type": "file",
+          "path": "work/mac-installer-helper/Pageline Installer.app"
+        }
+      ]
     },
     "toolsets": {
       "nsis": "1.2.1"

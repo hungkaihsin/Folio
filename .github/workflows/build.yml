@@ -10,10 +10,10 @@ jobs:
         include:
           - os: macos-latest
             command: npm run package:mac
-            artifact: folio-macos-universal
+            artifact: pageline-macos-universal
           - os: windows-latest
             command: npm run package:win
-            artifact: folio-windows-x64
+            artifact: pageline-windows-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -27,11 +27,14 @@ jobs:
       - run: npm run test:ui
       - run: npm run test:desktop
       - run: npm run test:clipboard
+      - run: npm run test:print-desktop
       - run: ${{ matrix.command }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - if: runner.os == 'macOS'
         run: npm run test:installer:mac
+      - if: runner.os == 'Windows'
+        run: node tests/windows-package.mjs
       - if: runner.os == 'Windows'
         run: npm run test:installer:win
         env:

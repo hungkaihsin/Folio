@@ -9,6 +9,8 @@ import type {
   Point,
   TextSelection,
   ClipboardContent,
+  PrintOptions,
+  PrintJob,
 } from "./types";
 const worker = new Worker(new URL("./engine.worker.ts", import.meta.url), {
   type: "module",
@@ -61,6 +63,10 @@ const call = async <T>(method: string, ...args: unknown[]): Promise<T> => {
   });
 };
 export const engine = {
+  printDocument: (options: PrintOptions, name: string) =>
+    call<ExportedFile>("printDocument", options, name),
+  printImages: (options: PrintOptions) =>
+    call<PrintJob>("printImages", options),
   copyObject: (page: number, id: string) =>
     call<ClipboardContent>("copyObject", page, id),
   selectText: (page: number, start: Point, end: Point) =>
@@ -89,6 +95,10 @@ export const engine = {
 declare global {
   interface Window {
     desktop?: {
+      print: (job: PrintJob) => Promise<boolean>;
+      checkUpdates: () => Promise<UpdateStatus>;
+      downloadUpdate: () => Promise<void>;
+      openReleases: () => Promise<void>;
       readClipboard: () => Promise<ClipboardContent | null>;
       nativeClipboard: (action: "copy" | "paste") => Promise<void>;
       writeClipboard: (content: ClipboardContent) => Promise<void>;
@@ -107,3 +117,9 @@ declare global {
     };
   }
 }
+export type UpdateStatus = {
+  state: "current" | "available" | "unavailable";
+  currentVersion: string;
+  version?: string;
+  reason?: string;
+};

@@ -1,3 +1,7 @@
+# Pageline 0.8.0 progress — 2026-11-25
+
+Pageline is the new product name paired with Cutline. This release adds normal printing, page ranges, booklet/saddle-stitch imposition, print-ready PDF export, an installer-based update checker and optional desktop shortcuts. The release feed needs accessible published releases; signing/notarization and Windows runtime validation remain release work. Bookmarks, tabs, crash recovery, OCR, paragraph reflow and editing arbitrary imported images remain product gaps. The older review below records the 0.7.0 assessment; its printing gap has now been addressed.
+
 # Folio feature review — 2026-11-01
 
 Folio 0.7.0 has a useful everyday editing core, but it is not yet a full Adobe Acrobat replacement. This review compares the live source and verified workflows with Adobe's documented capabilities. The priorities below are product recommendations, not features already implemented.

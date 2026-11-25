@@ -18,7 +18,7 @@ test("sample document: existing text edits, annotation, undo/redo, pages, saved 
     .getByRole("button", { name: "Explore with a sample document" })
     .click();
   await expect(
-    page.getByText("Welcome to Folio.pdf", { exact: true }),
+    page.getByText("Welcome to Pageline.pdf", { exact: true }),
   ).toBeVisible();
   await expect(page.locator(".loading")).toBeHidden();
   await expect(page.locator(".text-layer")).toBeVisible();

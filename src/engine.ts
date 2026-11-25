@@ -15,6 +15,8 @@ import type {
   FontReport,
   TextSelection,
   Point,
+  PrintOptions,
+  PrintJob,
 } from "./types";
 
 import {
@@ -31,6 +33,7 @@ import {
   type ManagedData,
 } from "./objects";
 import { copyManaged, pasteManaged } from "./objectClipboard";
+import { makePrintPdf } from "./printPdf";
 
 export class PDFEngine {
   private doc: m.PDFDocument | null = null;
@@ -355,6 +358,71 @@ export class PDFEngine {
       mime: "application/zip",
       bytes: zip(files),
     };
+  }
+  printDocument(options: PrintOptions, name = "document.pdf"): ExportedFile {
+    if (!this.current().hasPermission("print"))
+      throw new Error("This PDF does not permit printing.");
+    const prepared = makePrintPdf(this.export(), options);
+    const base =
+      name.replace(/\.pdf$/i, "").replace(/[\\/:*?"<>|]/g, "_") || "document";
+    return {
+      name: `${base}-${options.layout === "booklet" ? "booklet" : "print"}.pdf`,
+      extension: "pdf",
+      mime: "application/pdf",
+      bytes: prepared.bytes,
+    };
+  }
+  printImages(options: PrintOptions): PrintJob {
+    const file = this.printDocument(options);
+    const pdf = m.Document.openDocument(file.bytes, "application/pdf");
+    const pages: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (let index = 0; index < pdf.countPages(); index++) {
+        const page = pdf.loadPage(index);
+        try {
+          const bounds = page.getBounds();
+          const scale = Math.min(
+            300 / 72,
+            Math.sqrt(
+              18000000 / ((bounds[2] - bounds[0]) * (bounds[3] - bounds[1])),
+            ),
+          );
+          const pix = page.toPixmap(
+            m.Matrix.scale(scale, scale),
+            m.ColorSpace.DeviceRGB,
+            false,
+            true,
+          );
+          try {
+            const png = pix.asPNG().slice();
+            total += png.length;
+            if (total > 160 * 1024 * 1024)
+              throw new Error(
+                "Print fewer pages in one job, or save a print PDF.",
+              );
+            pages.push(png);
+          } finally {
+            pix.destroy();
+          }
+        } finally {
+          page.destroy();
+        }
+      }
+      return {
+        pages,
+        paper: options.paper,
+        landscape:
+          options.layout === "booklet" || options.orientation === "landscape",
+        copies: options.copies,
+        duplex:
+          options.layout === "booklet" && options.sides !== "both"
+            ? "simplex"
+            : options.duplex,
+      };
+    } finally {
+      pdf.destroy();
+    }
   }
   extract(index: number) {
     const p = this.page(index);
@@ -777,7 +845,7 @@ export class PDFEngine {
   ) {
     const existing = entries(page).find((o) => o.data.id === id);
     if (!existing || existing.data.kind !== "text")
-      throw new Error("Select a Folio text object first.");
+      throw new Error("Select an added text object first.");
     const current = displayed(page, existing.data),
       rect = current.rect;
     if (!text.trim()) {

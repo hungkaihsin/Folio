@@ -15,7 +15,7 @@ export function copyManaged(
   id: string,
 ): ClipboardContent {
   const found = entries(page).find((e) => e.data.id === id);
-  if (!found) throw new Error("Select a Folio text box or image to copy.");
+  if (!found) throw new Error("Select an added text box or image to copy.");
   const fragment = new m.PDFDocument(),
     graft = fragment.newGraftMap();
   let p: m.PDFPage | undefined;

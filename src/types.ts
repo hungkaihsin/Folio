@@ -157,6 +157,26 @@ export type ExportedFile = {
   bytes: Uint8Array;
 };
 
+export type PrintOptions = {
+  pages: number[];
+  layout: "normal" | "booklet";
+  paper: "A4" | "A3" | "Letter";
+  orientation: "portrait" | "landscape";
+  binding: "left" | "right";
+  sides: "both" | "front" | "back";
+  reverse: boolean;
+  margin: number;
+  copies: number;
+  duplex: "simplex" | "shortEdge" | "longEdge";
+};
+export type PrintJob = {
+  pages: Uint8Array[];
+  paper: PrintOptions["paper"];
+  landscape: boolean;
+  copies: number;
+  duplex: PrintOptions["duplex"];
+};
+
 export interface FontReport {
   requestedFont: string;
   usedFonts: string[];

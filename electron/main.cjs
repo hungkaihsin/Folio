@@ -6,9 +6,15 @@ const {
   Menu,
   protocol,
   session,
+  shell,
 } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+app.setName("Pageline");
+if (!app.commandLine.hasSwitch("user-data-dir")) {
+  app.setPath("userData", path.join(app.getPath("appData"), "Folio"));
+}
+app.setAppUserModelId("com.danielhung.folio");
 let win,
   dirty = false;
 let uiLanguage = "en",
@@ -17,6 +23,9 @@ const nativeStrings = {
   File: "檔案",
   Edit: "編輯",
   View: "檢視",
+  Help: "說明",
+  "Print…": "列印…",
+  "Check for updates…": "檢查更新…",
   "Open PDF…": "開啟 PDF…",
   "New document": "建立文件",
   "Save copy…": "另存副本…",
@@ -64,6 +73,24 @@ async function source(file) {
   sourceInodes.add(`${s.dev}:${s.ino}`);
 }
 require("./clipboard.cjs")(ipcMain, valid);
+const printAsset = require("./printing.cjs")(ipcMain, valid, () => win);
+const updates = require("./updates.cjs").createUpdateService({
+  version: app.getVersion(),
+  platform: process.platform,
+  openExternal: (url) => shell.openExternal(url),
+});
+ipcMain.handle("updates:check", (event) => {
+  valid(event);
+  return updates.check();
+});
+ipcMain.handle("updates:download", (event) => {
+  valid(event);
+  return updates.download();
+});
+ipcMain.handle("updates:releases", (event) => {
+  valid(event);
+  return updates.openReleases();
+});
 ipcMain.handle("fonts:find", async (event, name) => {
   valid(event);
   if (typeof name !== "string" || !name.trim() || name.length > 256)
@@ -203,6 +230,7 @@ app.whenReady().then(() => {
         !(file === root || file.startsWith(root + path.sep))
       )
         return new Response("Forbidden", { status: 403 });
+      if (relative.startsWith("__print/")) return printAsset(relative);
       const types = {
         ".html": "text/html",
         ".js": "text/javascript",
@@ -241,7 +269,7 @@ app.whenReady().then(() => {
       minWidth: 1000,
       minHeight: 680,
       backgroundColor: "#e8e9ec",
-      title: "Folio",
+      title: "Pageline",
       webPreferences: {
         preload: path.join(__dirname, "preload.cjs"),
         sandbox: true,
@@ -274,7 +302,7 @@ app.whenReady().then(() => {
       ...(process.platform === "darwin"
         ? [
             {
-              label: "Folio",
+              label: "Pageline",
               submenu: [
                 { role: "about" },
                 { type: "separator" },
@@ -312,6 +340,11 @@ app.whenReady().then(() => {
             accelerator: "CmdOrCtrl+Shift+E",
             click: action("export"),
           },
+          {
+            label: "Print…",
+            accelerator: "CmdOrCtrl+P",
+            click: action("print"),
+          },
           { type: "separator" },
           { role: "close" },
         ],
@@ -348,6 +381,10 @@ app.whenReady().then(() => {
       {
         label: "View",
         submenu: [{ role: "togglefullscreen" }, { role: "toggleDevTools" }],
+      },
+      {
+        label: "Help",
+        submenu: [{ label: "Check for updates…", click: action("updates") }],
       },
     ];
     const localize = (list) =>

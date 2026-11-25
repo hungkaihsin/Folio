@@ -38,6 +38,7 @@ import {
   Cursor,
   Export,
   ClipboardText,
+  Printer,
 } from "@phosphor-icons/react";
 import { engine } from "./client";
 import type {
@@ -61,6 +62,9 @@ import {
 } from "./InlineTextEditor";
 import packageInfo from "../package.json";
 import { AnnotationPanel } from "./AnnotationPanel";
+import { PrintDialog } from "./PrintDialog";
+import { UpdatesDialog } from "./UpdatesDialog";
+import type { PrintOptions } from "./types";
 import { readClipboard, writeClipboard, editingField } from "./clipboard";
 import { ExportDialog } from "./ExportDialog";
 import { tr, getLocale, setLocale, type Locale } from "./i18n";
@@ -173,6 +177,8 @@ function Thumb({
   );
 }
 function App() {
+  const [printing, setPrinting] = useState(false),
+    [updating, setUpdating] = useState(false);
   const [locale, changeLocale] = useState<Locale>(getLocale),
     [exporting, setExporting] = useState(false),
     [selectedId, setSelectedId] = useState<string | null>(null),
@@ -294,7 +300,7 @@ function App() {
   );
   useEffect(() => {
     window.desktop?.dirty(dirty || draftDirty);
-    document.title = `${dirty || draftDirty ? "● " : ""}${doc ? name + " · " : ""}Folio`;
+    document.title = `${dirty || draftDirty ? "● " : ""}${doc ? name + " · " : ""}Pageline`;
   }, [dirty, draftDirty, name, doc]);
   useEffect(() => {
     const fn = (e: BeforeUnloadEvent) => {
@@ -428,7 +434,7 @@ function App() {
         };
         await add("A little room for your ideas.", 56, 80, 27);
         await add(
-          "FOLIO / YOUR EVERYDAY PDF WORKSPACE",
+          "PAGELINE / YOUR EVERYDAY PDF WORKSPACE",
           56,
           48,
           9,
@@ -483,7 +489,7 @@ function App() {
           [0.38, 0.41, 0.46],
         );
       }
-      loaded(d, sample ? "Welcome to Folio.pdf" : "Untitled.pdf");
+      loaded(d, sample ? "Welcome to Pageline.pdf" : "Untitled.pdf");
     });
   }
   async function edit(e: Edit) {
@@ -565,6 +571,33 @@ function App() {
       }
       setSavedPosition(doc.position);
       setToast("Your edited copy has been saved.");
+    });
+  }
+  async function printFile(options: PrintOptions) {
+    await run("Preparing print", async () => {
+      const job = await engine.printImages(options);
+      if (await window.desktop?.print(job)) {
+        setPrinting(false);
+        setToast("Print job sent.");
+      }
+    });
+  }
+  async function savePrintFile(options: PrintOptions) {
+    await run("Preparing print", async () => {
+      const file = await engine.printDocument(options, name);
+      if (window.desktop) {
+        if (!(await window.desktop.exportFile(file))) return;
+      } else {
+        const url = URL.createObjectURL(
+          new Blob([file.bytes as BlobPart], { type: file.mime }),
+        );
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = file.name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      }
+      setToast("Your print PDF has been saved.");
     });
   }
   async function exportFile(options: ExportOptions) {
@@ -710,7 +743,7 @@ function App() {
     }
   }
   async function pasteClipboard(data?: DataTransfer) {
-    if (busy || modal || exporting) return;
+    if (busy || modal || exporting || printing || updating) return;
     if (!doc || !view) {
       setToast("Open or create a PDF before pasting.");
       return;
@@ -777,7 +810,15 @@ function App() {
   }
   useEffect(() => {
     const paste = (e: ClipboardEvent) => {
-      if (editingField(e.target) || modal || busy || exporting) return;
+      if (
+        editingField(e.target) ||
+        modal ||
+        busy ||
+        exporting ||
+        printing ||
+        updating
+      )
+        return;
       e.preventDefault();
       void pasteClipboard(e.clipboardData || undefined);
     };
@@ -805,7 +846,18 @@ function App() {
       window.removeEventListener("paste", paste);
       window.removeEventListener("copy", copy);
     };
-  }, [doc, view, page, selected, tool, busy, modal, exporting]);
+  }, [
+    doc,
+    view,
+    page,
+    selected,
+    tool,
+    busy,
+    modal,
+    exporting,
+    printing,
+    updating,
+  ]);
   actions.current = {
     open: () => void chooseOpen(),
     new: () => void newDocument(),
@@ -814,6 +866,10 @@ function App() {
     undo: () => void undo(),
     redo: () => void redo(),
     pastePage: () => void pasteClipboard(),
+    print: () => {
+      if (doc) setPrinting(true);
+    },
+    updates: () => setUpdating(true),
   };
   useEffect(
     () =>
@@ -822,7 +878,7 @@ function App() {
         if (a === "copy" || a === "paste") {
           if (editingField(document.activeElement)) {
             void window.desktop?.nativeClipboard(a).catch(report);
-          } else if (!modal && !exporting) {
+          } else if (!modal && !exporting && !printing && !updating) {
             if (a === "paste") void pasteClipboard();
             else if (tool === "select" && selected) void copySelected();
             else void window.desktop?.nativeClipboard("copy").catch(report);
@@ -837,10 +893,21 @@ function App() {
           document.execCommand(a);
           return;
         }
-        if (modal) return;
+        if (modal || printing || updating || exporting) return;
         actions.current[a]?.();
       }),
-    [busy, modal, exporting, tool, selected, doc, view, page],
+    [
+      busy,
+      modal,
+      exporting,
+      printing,
+      updating,
+      tool,
+      selected,
+      doc,
+      view,
+      page,
+    ],
   );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -850,6 +917,8 @@ function App() {
         e.target instanceof HTMLSelectElement ||
         modal ||
         exporting ||
+        printing ||
+        updating ||
         e.isComposing ||
         e.key === "Process"
       )
@@ -863,6 +932,9 @@ function App() {
         ) {
           e.preventDefault();
           void copySelected();
+        } else if (e.key.toLowerCase() === "p") {
+          e.preventDefault();
+          if (doc) setPrinting(true);
         } else if (e.key.toLowerCase() === "e" && e.shiftKey) {
           e.preventDefault();
           setExporting(true);
@@ -927,7 +999,18 @@ function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [doc, busy, modal, exporting, selected, tool, page, info]);
+  }, [
+    doc,
+    busy,
+    modal,
+    exporting,
+    printing,
+    updating,
+    selected,
+    tool,
+    page,
+    info,
+  ]);
   function point(e: React.PointerEvent): Point {
     const r = sheet.current!.getBoundingClientRect();
     return [
@@ -1153,13 +1236,17 @@ function App() {
           <div className="brand-icon">
             <Stack size={22} weight="bold" />
           </div>
-          {tr("folio")}
-          <span
+          {tr("pageline")}
+          <button
+            type="button"
             className="app-version"
-            aria-label={`Folio version ${packageInfo.version}`}
+            aria-label={`Pageline version ${packageInfo.version}`}
+            title={tr("Check for updates")}
+            disabled={!!modal || !!busy || printing}
+            onClick={() => setUpdating(true)}
           >
             {packageInfo.version}
-          </span>
+          </button>
           <span className="brand-divider" />
         </div>
         <div className="document-name">
@@ -1203,6 +1290,15 @@ function App() {
             <FolderOpen size={17} />
             {tr("Open PDF")}
           </button>
+          {doc && (
+            <IconButton
+              title={tr("Print PDF")}
+              disabled={!!busy || !!modal}
+              onClick={() => setPrinting(true)}
+            >
+              <Printer size={19} />
+            </IconButton>
+          )}
           {doc && (
             <button
               className="button subtle"
@@ -1682,7 +1778,7 @@ function App() {
                       <div className="notice">
                         <p>
                           {tr(
-                            "Choose an object on the page. Folio 0.1 text and images are recovered when possible. Other flattened PDF contents are edited with Edit text.",
+                            "Choose an added image or text box to edit its properties.",
                           )}
                         </p>
                       </div>
@@ -2116,6 +2212,17 @@ function App() {
           onExport={(options) => void exportFile(options)}
         />
       )}
+      {printing && doc && (
+        <PrintDialog
+          page={page}
+          count={doc.pages.length}
+          busy={!!busy}
+          onClose={() => setPrinting(false)}
+          onPrint={(options) => void printFile(options)}
+          onSave={(options) => void savePrintFile(options)}
+        />
+      )}
+      {updating && <UpdatesDialog onClose={() => setUpdating(false)} />}
       {modal && !inline && (
         <div className="modal-backdrop">
           <form
