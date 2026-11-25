@@ -14,30 +14,39 @@ const version = JSON.parse(await fs.readFile("package.json", "utf8")).version;
 const root = path.resolve(`release/v${version}`),
   setup = path.join(root, `Pageline-${version}-Windows-x64-Setup.exe`);
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pageline-win-package-"));
-const bin = await getPath7za(),
-  exec = promisify(execFile);
+let bin = process.env.PAGELINE_7ZIP;
+if (!bin && process.platform === "win32") {
+  // The Windows builder toolset contains 7za, which can see the embedded 7z
+  // stream but cannot unpack the outer NSIS container. Use full 7-Zip here.
+  const installed = path.join(
+    process.env.ProgramFiles || "C:\\Program Files",
+    "7-Zip",
+    "7z.exe",
+  );
+  await fs.access(installed);
+  bin = installed;
+}
+bin ||= await getPath7za();
+const exec = promisify(execFile);
 const run = (args) =>
   exec(bin, args, { timeout: 180000, maxBuffer: 4 * 1024 * 1024 });
 try {
   await run(["t", setup]);
-  await run([
-    "x",
-    setup,
-    `-o${tmp}`,
-    "$PLUGINSDIR/app-64.7z",
-    "$R0/Uninstall Pageline.exe",
-    "-y",
-  ]);
-  const archive = path.join(tmp, "$PLUGINSDIR/app-64.7z");
+  await run(["x", setup, `-o${tmp}`, "-y"]);
+  const extracted = await fs.readdir(tmp, { recursive: true });
+  const findExtracted = (name) => {
+    const matches = extracted.filter((entry) => path.basename(entry) === name);
+    assert.equal(
+      matches.length,
+      1,
+      `Expected one ${name} in the NSIS container`,
+    );
+    return path.join(tmp, matches[0]);
+  };
+  const archive = findExtracted("app-64.7z");
+  const uninstaller = findExtracted("Uninstall Pageline.exe");
   await run(["t", archive]);
-  await run([
-    "x",
-    archive,
-    `-o${path.join(tmp, "payload")}`,
-    "Pageline.exe",
-    "resources/app.asar",
-    "-y",
-  ]);
+  await run(["x", archive, `-o${path.join(tmp, "payload")}`, "-y"]);
   const hash = async (file) =>
     createHash("sha256")
       .update(await fs.readFile(file))
@@ -49,7 +58,7 @@ try {
     );
   for (const name of [
     path.join(tmp, "payload/Pageline.exe"),
-    path.join(tmp, "$R0/Uninstall Pageline.exe"),
+    uninstaller,
     setup,
   ]) {
     const data = await fs.readFile(name),
@@ -95,9 +104,14 @@ try {
     "electron/preload.cjs",
     "electron/printing.cjs",
     "electron/updates.cjs",
-    "README.md",
   ])
     assert.deepEqual(extractFile(asar, name), await fs.readFile(name));
+  // Publication can update documentation after a verified package is built.
+  assert.ok(
+    extractFile(asar, "README.md")
+      .toString()
+      .startsWith(`# Pageline ${version}`),
+  );
   for (const name of listPackage(asar).filter((name) =>
     name.startsWith("/dist/"),
   )) {

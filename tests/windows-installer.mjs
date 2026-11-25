@@ -80,7 +80,10 @@ try {
         { env: { ...process.env, PAGELINE_TEST_SHORTCUT: link } },
       )
     ).stdout.trim();
-    assert.equal(path.resolve(linkTarget).toLowerCase(), exe.toLowerCase());
+    assert.equal(
+      (await fs.realpath(linkTarget)).toLowerCase(),
+      (await fs.realpath(exe)).toLowerCase(),
+    );
   } else await assert.rejects(fs.access(path.join(desktop, "Pageline.lnk")));
   await run(setup, ["/S"]); // updating the same release must keep one usable installation
   await fs.access(exe);
