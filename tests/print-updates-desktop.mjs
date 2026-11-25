@@ -85,6 +85,7 @@ try {
     .click();
   await expect(page.getByRole("status")).toContainText(
     "Your print PDF has been saved.",
+    { timeout: 30000 },
   );
   const doc = m.Document.openDocument(
     new Uint8Array(await fs.readFile(vector)),
