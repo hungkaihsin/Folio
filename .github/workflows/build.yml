@@ -6,13 +6,14 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
-            command: npm run package:mac
+            command: npm run package:mac -- --publish never
             artifact: pageline-macos-universal
           - os: windows-latest
-            command: npm run package:win
+            command: npm run package:win -- --publish never
             artifact: pageline-windows-x64
     runs-on: ${{ matrix.os }}
     steps:
