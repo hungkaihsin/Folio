@@ -3,6 +3,12 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+# Superseded runs of the same branch/tag should not linger and send late alerts.
+concurrency:
+  group: pageline-desktop-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
   build:
     strategy:
@@ -16,6 +22,7 @@ jobs:
             command: npm run package:win -- --publish never
             artifact: pageline-windows-x64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

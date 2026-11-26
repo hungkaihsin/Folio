@@ -1238,18 +1238,12 @@ function App() {
             <img src={pagelineMark} alt="" />
           </div>
           {tr("pageline")}
-          <button
-            type="button"
+          <span
             className="app-version"
-            aria-label={tr("Check for updates")}
-            title={`Pageline ${packageInfo.version} · ${tr("Check for updates")}`}
-            disabled={!!modal || !!busy || printing}
-            onClick={() => setUpdating(true)}
+            aria-label={`Pageline version ${packageInfo.version}`}
           >
-            <ArrowClockwise size={14} />
-            <span>{tr("Updates")}</span>
-            <span className="version-number">{packageInfo.version}</span>
-          </button>
+            {packageInfo.version}
+          </span>
           <span className="brand-divider" />
         </div>
         <div className="document-name">
@@ -1266,6 +1260,18 @@ function App() {
           )}
         </div>
         <div className="top-actions">
+          <button
+            type="button"
+            className="button update-check-button"
+            aria-label={tr("Check for updates")}
+            title={tr("Check for updates")}
+            disabled={!!modal || !!busy || printing || updating || exporting}
+            onClick={() => setUpdating(true)}
+          >
+            <ArrowClockwise size={17} />
+            {tr("Check for updates")}
+          </button>
+
           <label className="language-switch">
             <span>{tr("Language / 語言")}</span>
             <select

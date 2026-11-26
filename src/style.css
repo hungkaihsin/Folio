@@ -1868,29 +1868,23 @@ button.tool-note {
   text-align: right;
 }
 
-.app-version {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 8px;
-  border: 1px solid #dce4ed;
-  border-radius: 6px;
-  background: #f5f8fb;
-  color: #345b80;
-  cursor: pointer;
+.update-check-button {
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 1px solid #90b0d2;
+  background: #eaf2fb;
+  color: #214f7d;
+  font-size: 12px;
+  font-weight: 650;
   white-space: nowrap;
-  margin-left: 0;
 }
-.app-version:hover {
-  background: #eaf0f7;
+.update-check-button:hover {
+  background: #dbe9f8;
+  border-color: #628cba;
 }
-.app-version:focus-visible {
+.update-check-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-.version-number {
-  color: #60748a;
-  font-variant-numeric: tabular-nums;
 }
 .print-modal {
   width: min(920px, calc(100vw - 48px));

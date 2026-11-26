@@ -80,7 +80,7 @@ test("update UI exposes an installer download and handles failed opening", async
   await page.getByRole("button", { name: "Close updates" }).click();
 });
 
-test("Updates is visibly labeled on the compact home and document workspace in both languages", async ({
+test("Check for updates is a full-size labeled button on the compact home and document workspace in both languages", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1000, height: 680 });
@@ -90,7 +90,13 @@ test("Updates is visibly labeled on the compact home and document workspace in b
     exact: true,
   });
   await expect(updates).toBeInViewport();
-  await expect(updates).toContainText("Updates");
+  await expect(updates).toHaveText("Check for updates");
+  expect((await updates.boundingBox())!.height).toBeGreaterThanOrEqual(34);
+  expect(
+    await updates.evaluate((element) =>
+      parseFloat(getComputedStyle(element).fontSize),
+    ),
+  ).toBeGreaterThanOrEqual(12);
   await updates.click();
   await expect(
     page.getByRole("dialog", { name: "Pageline updates" }),
@@ -109,14 +115,14 @@ test("Updates is visibly labeled on the compact home and document workspace in b
     name: "檢查更新",
     exact: true,
   });
-  await expect(translated).toContainText("更新");
+  await expect(translated).toHaveText("檢查更新");
   await expect(translated).toBeInViewport();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.screenshot({ path: "work/pageline-081-workspace.png" });
+  await page.screenshot({ path: "work/pageline-082-workspace.png" });
   await translated.click();
   await expect(
     page.getByRole("dialog", { name: "Pageline 更新" }),

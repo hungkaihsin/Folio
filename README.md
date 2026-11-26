@@ -1,4 +1,4 @@
-# Pageline 0.8.1
+# Pageline 0.8.2
 
 A local PDF editor for macOS and Windows, built with Electron, React, TypeScript, and MuPDF WebAssembly. Documents stay local, with no accounts, uploads, remote fonts, or PDF JavaScript execution. The optional update check contacts GitHub for release metadata only.
 
@@ -20,6 +20,12 @@ npm start
 On macOS, double-click `Launch Pageline.command` after installing dependencies. On Windows, use `Launch Pageline.bat`. The source launchers need Node.js; packaged desktop apps do not.
 
 Use **Open PDF** for your own file or **Explore with a sample document** to try real editing immediately.
+
+## What changed in 0.8.2
+
+- **Check for updates / 檢查更新** is now a full-size blue-outlined button at the top right, next to the other document actions. The version is a separate label; update checking is no longer tucked inside a small version-adjacent control. The Help menu remains available.
+- Tagged builds now include the corrected Windows icon validator (Windows stores a 256px icon dimension as zero) and the native print preparation timeout adjustment. Older failure emails for the original 0.8.1 tag refer to that historical attempt; later corrected validation passed.
+- CI cancels superseded runs of the same ref and has explicit read-only repository permissions and a bounded job timeout. Failed checks remain visible; notifications are not muted or deleted.
 
 ## What changed in 0.8.1
 
@@ -119,7 +125,7 @@ Saving creates a normal PDF and does not preserve validity of existing cryptogra
 npm run package:mac           # Universal macOS DMG (Apple Silicon + Intel)
 npm run package:mac:app       # Apple Silicon app folder for development
 npm run package:win           # Windows x64 NSIS Setup.exe installer
-npm run package:win:zip       # Windows x64 app folder in release/v0.8.1/win-unpacked/
+npm run package:win:zip       # Windows x64 app folder in release/v0.8.2/win-unpacked/
 ```
 
 The universal Mac installer contains both arm64 and x86_64. Native verification on this host covers Apple Silicon; Intel execution remains untested. Windows ARM64 is not included.
